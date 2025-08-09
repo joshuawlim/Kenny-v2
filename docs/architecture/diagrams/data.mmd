@@ -3,6 +3,8 @@ erDiagram
   PROPOSALS }o--|| MESSAGES : source_message_id
   AGENT_CONVERSATIONS ||--o{ AGENT_MESSAGES : conversation_id
   MESSAGE_LABELS }o--|| MESSAGES : message_id
+  ATTACHMENTS }o--|| MESSAGES : message_id
+  EXTRACTIONS }o--|| ATTACHMENTS : attachment_id
 
   CONTACTS {
     TEXT id PK
@@ -27,6 +29,8 @@ erDiagram
     TEXT subject
     TEXT content_snippet
     TEXT content_body
+    INTEGER has_attachments
+    TEXT source_message_id
     TEXT ts
     INTEGER is_outgoing
     TEXT source_app
@@ -84,6 +88,26 @@ erDiagram
     TEXT label "important|actionable|meeting_request|ignore"
     REAL confidence
     TEXT source "model|user"
+    TEXT created_at
+  }
+
+  ATTACHMENTS {
+    TEXT id PK
+    INTEGER message_id
+    TEXT source "whatsapp"
+    TEXT media_type
+    TEXT file_path
+    TEXT checksum
+    TEXT created_at
+  }
+
+  EXTRACTIONS {
+    TEXT id PK
+    TEXT attachment_id
+    TEXT extractor
+    TEXT text
+    REAL confidence
+    TEXT provenance "JSON"
     TEXT created_at
   }
 

@@ -17,6 +17,7 @@ services:
       # - MAC_BRIDGE_API_KEY=change-me
       - DB_URL=sqlite:////data/agent.db
       - VDB_URL=sqlite:////data/vectors.db
+      - PG_URL=postgresql://kenny:kenny@postgres:5432/kenny
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - CALENDAR_REQUIRE_APPROVAL=true
       - CALENDAR_DEFAULT_CALENDAR_ID=
@@ -31,9 +32,14 @@ services:
       # - SEARCH_TOPK_VSS=50
       # - SEARCH_TOPK_FTS=50
       # - SEARCH_TOPK_FINAL=20
+      - IMAGE_PROCESSING_ENABLED=false
+      - ATTACHMENTS_DIR=/data/attachments
     volumes:
       - app_data:/data
+      - attachments:/data/attachments
     # SQLite runs in-process; no external DB service required
+    depends_on:
+      - postgres
 
   workers:
     build: ../services/workers
@@ -42,6 +48,7 @@ services:
       # Optional: local API key if Bridge enforces it
       # - MAC_BRIDGE_API_KEY=change-me
       - DB_URL=sqlite:////data/agent.db
+      - PG_URL=postgresql://kenny:kenny@postgres:5432/kenny
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - MAIL_SYNC_MAILBOXES=Inbox,Sent
       - MAIL_SYNC_INTERVAL_MINUTES=10
@@ -58,14 +65,18 @@ services:
       - LEARNING_CURATE_DAILY_HOUR=02:00
       - WHITELISTED_SITES=
       - EGRESS_ALLOWLIST=http://host.docker.internal:11434,http://host.docker.internal:5100
+      - IMAGE_PROCESSING_ENABLED=false
+      - ATTACHMENTS_DIR=/data/attachments
       # Optional: embeddings/search tunables (if workers compute embeddings)
       # - EMBEDDINGS_MODEL=nomic-embed-text
       # - EMBEDDINGS_DIM=768
     volumes:
       - app_data:/data
       - whatsapp_profile:/data/whatsapp_profile
+      - attachments:/data/attachments
     depends_on:
       - api
+      - postgres
 
   ui:
     build: ../services/ui
@@ -76,11 +87,30 @@ services:
       - AGENT_PERSONA_NAME=Kenny
       # Optional: choose default conversation channel for UI affordances
       - AGENT_DEFAULT_CHANNEL=whatsapp
+      - IMAGE_PROCESSING_ENABLED=false
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=kenny
+      - POSTGRES_PASSWORD=kenny
+      - POSTGRES_DB=kenny
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    volumes:
+      - pg_data:/var/lib/postgresql/data
       # Optional: approvals via chat by default in UI
       # - APPROVALS_CHAT_FIRST=true
 
 volumes:
   app_data:
   whatsapp_profile:
+  pg_data:
+  attachments:
 
 

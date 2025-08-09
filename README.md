@@ -58,6 +58,7 @@ See ADRs for design choices:
   - `docs/architecture/decision-records/ADR-0015-website-whitelist-access.md`
   - `docs/architecture/decision-records/ADR-0016-contacts-knowledge-base.md`
   - `docs/architecture/decision-records/ADR-0017-observability-dashboard.md`
+   - `docs/architecture/decision-records/ADR-0019-whatsapp-image-understanding-local.md`
 
 Mail scope (MVP): Inbox and Sent only; bodies fetched on-demand for recent emails.
 
