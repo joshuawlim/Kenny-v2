@@ -27,6 +27,7 @@ This directory centralizes design knowledge and decisions for Kenny v2. It follo
 - Context: System scope and external actors (`diagrams/context.mmd`)
 - Container: Deployable/runtime units (`diagrams/container.mmd`)
 - Component: Internal components and interfaces (add `component-*.mmd` as needed)
+- Data: Logical data model (`diagrams/data.mmd`)
 
 ### Conventions
 - Diagrams are Mermaid `.mmd` files.

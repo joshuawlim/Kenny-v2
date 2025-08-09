@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, Query
 from pydantic import BaseModel
 from typing import List, Optional
@@ -34,10 +34,12 @@ def mail_messages(
     # Generate deterministic fake data for demo
     try:
         since_dt = datetime.fromisoformat((since or "").replace("Z", "+00:00"))
+        if since_dt.tzinfo is None:
+            since_dt = since_dt.replace(tzinfo=timezone.utc)
     except Exception:
-        since_dt = datetime.utcnow() - timedelta(days=30)
+        since_dt = datetime.now(timezone.utc) - timedelta(days=30)
 
-    base_ts = datetime.utcnow()
+    base_ts = datetime.now(timezone.utc)
     start_index = page * limit
     items = []
     for i in range(start_index, start_index + limit):
@@ -51,7 +53,7 @@ def mail_messages(
                 "from": "example@sender.com" if mailbox == "Inbox" else "me@example.com",
                 "to": ["me@example.com"] if mailbox == "Inbox" else ["friend@example.com"],
                 "subject": f"Demo {mailbox} message #{i}",
-                "ts": ts.replace(microsecond=0).isoformat() + "Z",
+                "ts": ts.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
                 "snippet": "This is a demo snippet.",
             }
         )

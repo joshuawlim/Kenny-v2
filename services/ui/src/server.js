@@ -49,16 +49,34 @@ function htmlPage(body) {
       await refresh();
     }
     async function refreshMessages() {
-      const r = await fetch('/api/messages');
-      const list = document.getElementById('messages');
-      list.innerHTML = '';
-      if (r.ok) {
-        const items = await r.json();
-        items.forEach(m => {
+      try {
+        const r = await fetch('/api/messages');
+        const list = document.getElementById('messages');
+        list.innerHTML = '';
+        if (r.ok) {
+          const items = await r.json();
+          if (!items.length) {
+            const li = document.createElement('li');
+            li.textContent = 'No messages yet. Click Sync to fetch Inbox/Sent.';
+            list.appendChild(li);
+          } else {
+            items.forEach(m => {
+              const li = document.createElement('li');
+              li.innerHTML = '<strong>' + (m.mailbox || '') + '</strong> ' + (m.subject || '(no subject)') + ' — ' + (m.snippet || '') + ' <span style="color:#6b7280">' + m.ts + '</span>';
+              list.appendChild(li);
+            });
+          }
+        } else {
           const li = document.createElement('li');
-          li.innerHTML = '<strong>' + (m.mailbox || '') + '</strong> ' + (m.subject || '(no subject)') + ' — ' + (m.snippet || '') + ' <span style="color:#6b7280">' + m.ts + '</span>';
+          li.textContent = 'Error loading messages: ' + r.status;
           list.appendChild(li);
-        });
+        }
+      } catch (e) {
+        const list = document.getElementById('messages');
+        list.innerHTML = '';
+        const li = document.createElement('li');
+        li.textContent = 'Error loading messages.';
+        list.appendChild(li);
       }
     }
     async function syncMailbox(box) {
@@ -70,7 +88,7 @@ function htmlPage(body) {
       await refresh();
       btn.disabled = false; btn.textContent = 'Sync ' + box;
     }
-    window.addEventListener('load', refresh);
+    window.addEventListener('load', () => { refresh(); setInterval(refreshMessages, 5000); });
   </script>
 </head>
 <body>
@@ -96,6 +114,7 @@ function htmlPage(body) {
     <div style="margin-bottom:0.5rem">
       <button id="sync-Inbox" onclick="syncMailbox('Inbox')">Sync Inbox</button>
       <button id="sync-Sent" onclick="syncMailbox('Sent')">Sync Sent</button>
+      <button onclick="refreshMessages()">Refresh list</button>
     </div>
     <ul id="messages"></ul>
   </div>

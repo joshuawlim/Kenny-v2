@@ -1,43 +1,32 @@
-graph TD
-  %% Kenny v2 - Container Diagram (Mermaid)
-  user(("User"))
-  internet(("Internet"))
+%% Container diagram for Kenny v2
+flowchart TB
+  User((User))
 
-  subgraph "Host (macOS)"
-    macApps["Contacts / Calendar / Mail / Messages / WhatsApp Desktop"]
-    macBridge["macOS Bridge (Python + AppleScript/PyObjC)\nlocalhost HTTP API :5100"]
-    ollama["Ollama (local LLM, Metal) :11434"]
+  subgraph LocalHost[Local Machine]
+    WebUI[Web Chat UI]
+    Engine[Agent Engine]
+    ETL[ETL Pipelines (Mail/WhatsApp/iMessage)]
+    KB[Contacts Knowledge Base]
+    Search[Search & Embeddings]
+    Memory[Memory Learning]
+    Dashboard[Observability Dashboard]
   end
 
-  subgraph "Docker (Compose)"
-    proxy["Reverse Proxy (Caddy)"]
-    api["Agent API + Orchestrator (FastAPI)"]
-    workers["Sync Workers (ETL + Playwright for WhatsApp Web)"]
-    sqldb["SQLite (app data)"]
-    vdb["Vector DB (SQLite+VSS)"]
-    ui["Web UI (Next.js)"]
-    pg["Postgres (attachments/extractions metadata) :5432 (localhost)"]
-    extractor["Image OCR/Extractor (local, disabled by default)"]
-  end
+  %% External Services (egress controlled by allowlist per ADR-0012)
+  WhatsApp[WhatsApp]
+  AppleMail[Apple Mail]
+  iMessage[iMessage]
+  Calendar[Apple Calendar]
 
-  user --> ui
-  user --> macApps
+  User --> WebUI
+  WebUI --> Engine
+  Engine --> ETL
+  Engine --> Search
+  Engine --> Memory
+  Engine --> KB
+  Engine --> Dashboard
 
-  ui --> proxy --> api
-  internet --> proxy
-
-  api <--> sqldb
-  api <--> vdb
-  api <--> pg
-  api <--> macBridge
-  workers --> macBridge
-  workers --> sqldb
-  workers --> vdb
-  workers --> pg
-  workers --> extractor
-  workers --> internet
-
-  macBridge <--> macApps
-  api --> ollama
-
-
+  ETL --- WhatsApp
+  ETL --- AppleMail
+  ETL --- iMessage
+  Engine --- Calendar

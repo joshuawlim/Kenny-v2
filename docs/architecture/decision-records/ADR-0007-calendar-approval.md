@@ -1,23 +1,28 @@
-## ADR-0007: Calendar event creation requires explicit user approval
+# ADR-0007: Require explicit human approval for calendar actions
 
-### Status
-Accepted
+Date: 2025-08-09
+Status: Proposed
 
-### Context
-- The user’s default calendar is shared. Automatically writing events could create noise or leak tentative plans.
-- The agent proposes events based on messages/emails and should only create them after confirmation.
+## Context
+Calendar events can expose sensitive information (titles, attendees, locations) and can create workflow disruptions if created or modified without the owner's consent. We need a trustworthy, user-centered mechanism that preserves privacy and avoids accidental changes.
 
-### Decision
-- All calendar writes require explicit user approval in the UI (or other approval channel) before calling the Bridge to create the event.
-- The system should support choosing the target calendar per event. A default target calendar can be configured but approval still applies.
+## Decision
+- All calendar actions (create, modify, delete) require explicit human approval from the calendar owner before the action is executed.
+- Approval requests are presented with a concise, reviewable summary (title, time window, participants, location/medium, organizer) and a clear approve/decline option.
+- The default approval conversation channel is WhatsApp when available. If unavailable, fall back to the local web chat. iMessage support will arrive in a future phase.
+- The system MUST NOT auto-create or auto-modify calendar events without prior approval.
+- Approvals are recorded locally with minimal metadata sufficient for audit (what, when, result) and no third-party transmission beyond the selected approval channel.
 
-### Consequences
-- Safer user experience with no unintended calendar writes.
-- Slightly higher interaction cost; mitigated by a streamlined “Approve & Create” flow.
+## Consequences
+- Slightly slower end-to-end flow for event creation, but significantly improved trust and correctness.
+- Clear user control reduces accidental or undesired calendar changes.
+- Requires lightweight approval UX and reliable message delivery on the chosen channel(s).
 
-### Implementation Notes
-- UI: An Approvals queue shows proposed events with title, time, attendees, source message, and a confidence/reason.
-- API: Only on approval does the API call `POST /v1/calendar/events` on the macOS Bridge with an explicit `calendar_id`.
-- Settings: `CALENDAR_REQUIRE_APPROVAL=true`. Optional `CALENDAR_DEFAULT_CALENDAR_ID` to suggest a calendar at approval time.
+## Alternatives Considered
+- Auto-create then notify: Faster but violates principle of explicit approval and risks trust.
+- macOS notifications-only: Platform-specific, less consistent with multi-channel conversational approvals.
 
-
+## References
+- ADR-0018: Default conversation channel is WhatsApp for approvals
+- ADR-0012: Local egress allowlist (deny-by-default, privacy-preserving)
+- docs/architecture/security-posture.md

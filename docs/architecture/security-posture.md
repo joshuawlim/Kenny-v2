@@ -1,43 +1,40 @@
-## Security Posture (Local-First)
+## Security Posture
 
-### Threat Model (MVP)
-- Single trusted user operating on a single macOS machine.
-- Primary risks: unintended data egress, over-permissioned host access, accidental writes (e.g., calendar), and fragile integrations (e.g., WhatsApp Web) leading to misbehavior.
+This document defines the baseline security principles and controls for Kenny v2.
 
 ### Principles
-- Local-first by default; no cloud dependencies for core features.
-- Outbound egress allowlisting (see `decision-records/ADR-0012-local-egress-allowlist.md`).
-- Human-in-the-loop for any user-visible write (calendar, messaging in Phase 2).
-- Least privilege for host permissions (Full Disk, Accessibility, Automation), only for the Bridge.
-
-### Network Controls
-- Allowlist the following outbound endpoints only:
-  - `http://host.docker.internal:11434` (Ollama)
-  - `http://host.docker.internal:5100` (macOS Bridge)
-  - `https://web.whatsapp.com` (only if WhatsApp sync enabled)
-- Recommend OS-level enforcement (macOS firewall, Little Snitch profiles).
- - Proxy/UI/API are bound to localhost via Caddy; no remote exposure in MVP.
- - Postgres is bound to localhost and used only for attachment/extraction metadata.
+- Local-first by default: process and store data locally whenever feasible.
+- Least privilege: components only have the minimum access they need.
+- Deny-by-default egress: outbound network traffic is blocked unless allowlisted (see ADR-0012).
+- Explicit user approvals for sensitive actions, e.g., calendar changes (see ADR-0007).
+- Privacy-by-design: minimize data collection, retain only what is necessary.
 
 ### Data Handling
-- SQLite databases stored in local Docker volumes (`app_data`), embeddings in `vectors.db`.
-- No third-party telemetry. Logs remain local.
-- Email bodies limited to recent window. WhatsApp image attachments are stored locally on disk with checksums; image processing (OCR/vision) is local-only and opt-in (disabled by default).
-- Optional retention knobs for agent chat and embeddings (future work).
+- Data classes: messages, contacts, events, embeddings, metrics.
+- Storage: local storage with encryption at rest where supported by the platform.
+- Retention: retain only as long as needed for feature functionality; provide deletion pathways.
 
-### UI and API Security (MVP)
-- Web UI and API served only on localhost via Caddy.
-- Same-origin only; no remote exposure in MVP. CSRF mitigated by local-only deployment.
-- If remote access is later introduced, enable CSRF tokens and session hardening.
+### Access Controls
+- Separate service identities for modules; avoid shared credentials.
+- Secrets management: load secrets from local secure storage; never hardcode.
 
-### Auditing and Approvals
-- All calendar writes gated by explicit approval in UI (see `ADR-0007`).
-- Log structured audit entries for approvals with proposal id, calendar id, and result id.
- - For image processing (when enabled): record extractor name, start/end timestamps, attachment ids, message ids, and file paths touched in an on-device audit log (rotated locally). No telemetry.
+### Network Egress
+- Enforce allowlist per ADR-0012. Any new destination requires justification and review.
+- Log allowed/blocked egress events locally with minimal metadata.
 
-### Operational Guidance
-- Health endpoints on API, workers, Bridge.
-- Metrics for ETL throughput, errors, and LLM latency.
-- Documented backup/restore for local volumes; recommend periodic offline backups.
+### Approvals and UX
+- Calendar and similar sensitive actions require explicit user approval (ADR-0007).
+- Default approval channel is WhatsApp; fallback to local web chat (ADR-0018).
 
+### Logging and Observability
+- Collect minimal necessary logs and metrics locally. Avoid sending logs off-device unless explicitly allowlisted.
+- Redact sensitive fields where possible.
 
+### Testing and Verification
+- Include automated checks that fail builds if code introduces non-allowlisted egress.
+- Manual review for new integrations to confirm least-privilege and approval flows.
+
+### References
+- ADR-0012: Deny-by-default network egress with explicit allowlist
+- ADR-0007: Require explicit human approval for calendar actions
+- ADR-0018: Default conversation channel for approvals is WhatsApp

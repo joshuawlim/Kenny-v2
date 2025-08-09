@@ -1,114 +1,41 @@
+%% Logical data model for Kenny v2 (simplified)
 erDiagram
-  CONTACTS ||--o{ MESSAGES : referenced_by
-  PROPOSALS }o--|| MESSAGES : source_message_id
-  AGENT_CONVERSATIONS ||--o{ AGENT_MESSAGES : conversation_id
-  MESSAGE_LABELS }o--|| MESSAGES : message_id
-  ATTACHMENTS }o--|| MESSAGES : message_id
-  EXTRACTIONS }o--|| ATTACHMENTS : attachment_id
+  CONTACT ||--o{ MESSAGE : sends_receives
+  CONTACT ||--o{ EVENT : attends
+  MESSAGE ||--o{ MEMORY : summarized_into
+  MESSAGE ||--o{ EMBEDDING : has
 
-  CONTACTS {
-    TEXT id PK
-    TEXT external_id
-    TEXT name
-    TEXT phones  "JSON"
-    TEXT emails  "JSON"
-    TEXT job_title
-    TEXT interests "JSON"
-    TEXT source_app
-    TEXT updated_at
+  CONTACT {
+    string id
+    string displayName
+    string channelHandle
   }
 
-  MESSAGES {
-    INTEGER id PK
-    TEXT platform "imessage|whatsapp|mail"
-    TEXT external_id
-    TEXT thread_external_id
-    TEXT mailbox
-    TEXT sender_id
-    TEXT recipient_ids "JSON"
-    TEXT subject
-    TEXT content_snippet
-    TEXT content_body
-    INTEGER has_attachments
-    TEXT source_message_id
-    TEXT ts
-    INTEGER is_outgoing
-    TEXT source_app
-    TEXT created_at
-    TEXT updated_at
+  MESSAGE {
+    string id
+    datetime timestamp
+    string channel (whatsapp|imessage|mail|web)
+    string direction (inbound|outbound)
+    text content
   }
 
-  EVENTS {
-    TEXT id PK
-    TEXT title
-    TEXT start
-    TEXT end
-    TEXT attendees "JSON"
-    TEXT source_app
-    TEXT updated_at
+  EVENT {
+    string id
+    datetime start
+    datetime end
+    string title
+    string location
+    string status (proposed|approved|declined)
   }
 
-  SYNC_STATE {
-    TEXT source PK
-    TEXT cursor
-    TEXT updated_at
+  MEMORY {
+    string id
+    string type (task|reminder|preference)
+    text content
   }
 
-  PROPOSALS {
-    TEXT id PK
-    TEXT type "calendar_event"
-    INTEGER source_message_id
-    TEXT title
-    TEXT start
-    TEXT end
-    TEXT attendees "JSON"
-    TEXT notes
-    REAL confidence
-    TEXT status "pending|approved|rejected"
-    TEXT result_ref
-    TEXT created_at
-    TEXT updated_at
+  EMBEDDING {
+    string id
+    string model
+    vector values
   }
-
-  AGENT_CONVERSATIONS {
-    TEXT id PK
-    TEXT created_at
-  }
-
-  AGENT_MESSAGES {
-    TEXT id PK
-    TEXT conversation_id
-    TEXT role "user|assistant"
-    TEXT content
-    TEXT created_at
-  }
-
-  MESSAGE_LABELS {
-    INTEGER message_id
-    TEXT label "important|actionable|meeting_request|ignore"
-    REAL confidence
-    TEXT source "model|user"
-    TEXT created_at
-  }
-
-  ATTACHMENTS {
-    TEXT id PK
-    INTEGER message_id
-    TEXT source "whatsapp"
-    TEXT media_type
-    TEXT file_path
-    TEXT checksum
-    TEXT created_at
-  }
-
-  EXTRACTIONS {
-    TEXT id PK
-    TEXT attachment_id
-    TEXT extractor
-    TEXT text
-    REAL confidence
-    TEXT provenance "JSON"
-    TEXT created_at
-  }
-
-
