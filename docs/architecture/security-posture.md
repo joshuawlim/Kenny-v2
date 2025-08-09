@@ -16,6 +16,7 @@
   - `http://host.docker.internal:5100` (macOS Bridge)
   - `https://web.whatsapp.com` (only if WhatsApp sync enabled)
 - Recommend OS-level enforcement (macOS firewall, Little Snitch profiles).
+ - Proxy/UI/API are bound to localhost via Caddy; no remote exposure in MVP.
 
 ### Data Handling
 - SQLite databases stored in local Docker volumes (`app_data`), embeddings in `vectors.db`.

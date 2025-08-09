@@ -1,15 +1,15 @@
 %% Mermaid system context (C4 Level 1)
-%% Replace placeholders with real actors/systems as they become known.
 
 flowchart LR
   user["End User"]
-  system(("Kenny v2"))
-  extA["External System A"]
-  extB["External System B"]
+  kenny(("Kenny v2 (Local)"))
+  ollama["Ollama (Local LLM :11434)"]
+  bridge["macOS Bridge (Local HTTP :5100)"]
+  wa["WhatsApp Web"]
+  appleApps["Mail / Messages / Contacts / Calendar (macOS)"]
 
-  user -->|uses| system
-  system -->|calls| extA
-  extB -->|events| system
-
-  classDef boundary fill:#f0f0f0,stroke:#999,stroke-width:1px
-  class system boundary
+  user -->|uses| kenny
+  kenny -->|LLM calls| ollama
+  kenny -->|host APIs| bridge
+  bridge <--> appleApps
+  kenny -->|read-only sync| wa

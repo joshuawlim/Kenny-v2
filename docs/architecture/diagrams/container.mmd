@@ -10,11 +10,11 @@ graph TD
   end
 
   subgraph "Docker (Compose)"
-    proxy["Reverse Proxy (Caddy/Traefik)"]
+    proxy["Reverse Proxy (Caddy)"]
     api["Agent API + Orchestrator (FastAPI)"]
     workers["Sync Workers (ETL + Playwright for WhatsApp Web)"]
     sqldb["SQLite (app data)"]
-    vdb["Vector DB (SQLite+VSS or Chroma)"]
+    vdb["Vector DB (SQLite+VSS)"]
     ui["Web UI (Next.js)"]
   end
 

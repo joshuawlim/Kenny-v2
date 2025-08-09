@@ -1,5 +1,8 @@
 erDiagram
   CONTACTS ||--o{ MESSAGES : referenced_by
+  PROPOSALS }o--|| MESSAGES : source_message_id
+  AGENT_CONVERSATIONS ||--o{ AGENT_MESSAGES : conversation_id
+  MESSAGE_LABELS }o--|| MESSAGES : message_id
 
   CONTACTS {
     TEXT id PK
@@ -45,6 +48,43 @@ erDiagram
     TEXT source PK
     TEXT cursor
     TEXT updated_at
+  }
+
+  PROPOSALS {
+    TEXT id PK
+    TEXT type "calendar_event"
+    INTEGER source_message_id
+    TEXT title
+    TEXT start
+    TEXT end
+    TEXT attendees "JSON"
+    TEXT notes
+    REAL confidence
+    TEXT status "pending|approved|rejected"
+    TEXT result_ref
+    TEXT created_at
+    TEXT updated_at
+  }
+
+  AGENT_CONVERSATIONS {
+    TEXT id PK
+    TEXT created_at
+  }
+
+  AGENT_MESSAGES {
+    TEXT id PK
+    TEXT conversation_id
+    TEXT role "user|assistant"
+    TEXT content
+    TEXT created_at
+  }
+
+  MESSAGE_LABELS {
+    INTEGER message_id
+    TEXT label "important|actionable|meeting_request|ignore"
+    REAL confidence
+    TEXT source "model|user"
+    TEXT created_at
   }
 
 

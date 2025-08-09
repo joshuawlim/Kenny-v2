@@ -11,11 +11,11 @@ This directory centralizes design knowledge and decisions for Kenny v2. It follo
 - `diagrams/`: C4-style diagrams (Mermaid)
  - `data-model.md`: Tables and schemas for MVP
  - `module-specs/etl-mail.md`: Mail ETL design (Inbox & Sent)
-  - `module-specs/memory-learning.md`: Memory and learning loop
-  - `module-specs/web-whitelist-access.md`: Whitelisted website access
-  - `module-specs/contacts-knowledge.md`: Contacts knowledge base
-  - `module-specs/dashboard.md`: Observability dashboard
-  - `module-specs/search-and-embeddings.md`: Local embeddings and hybrid search
+ - `module-specs/memory-learning.md`: Memory and learning loop
+ - `module-specs/web-whitelist-access.md`: Whitelisted website access
+ - `module-specs/contacts-knowledge.md`: Contacts knowledge base
+ - `module-specs/dashboard.md`: Observability dashboard
+ - `module-specs/search-and-embeddings.md`: Local embeddings and hybrid search
 
 ### Process
 1. Capture significant decisions as ADRs.
@@ -25,7 +25,7 @@ This directory centralizes design knowledge and decisions for Kenny v2. It follo
 
 ### C4 Mapping
 - Context: System scope and external actors (`diagrams/context.mmd`)
-- Container: Deployable/runtime units (add `container.mmd` when ready)
+- Container: Deployable/runtime units (`diagrams/container.mmd`)
 - Component: Internal components and interfaces (add `component-*.mmd` as needed)
 
 ### Conventions
