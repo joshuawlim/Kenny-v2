@@ -1,0 +1,15 @@
+%% Mermaid system context (C4 Level 1)
+%% Replace placeholders with real actors/systems as they become known.
+
+flowchart LR
+  user["End User"]
+  system(("Kenny v2"))
+  extA["External System A"]
+  extB["External System B"]
+
+  user -->|uses| system
+  system -->|calls| extA
+  extB -->|events| system
+
+  classDef boundary fill:#f0f0f0,stroke:#999,stroke-width:1px
+  class system boundary
