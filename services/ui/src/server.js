@@ -40,12 +40,35 @@ function htmlPage(body) {
         li.textContent = k + ': ' + (v.healthy ? 'healthy' : 'unknown');
         comps.appendChild(li);
       });
+      await refreshMessages();
     }
     async function toggleKill() {
       const current = document.getElementById('kill').textContent === 'On';
       const res = await fetch('/api/kill-switch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: !current }) });
       const json = await res.json();
       await refresh();
+    }
+    async function refreshMessages() {
+      const r = await fetch('/api/messages');
+      const list = document.getElementById('messages');
+      list.innerHTML = '';
+      if (r.ok) {
+        const items = await r.json();
+        items.forEach(m => {
+          const li = document.createElement('li');
+          li.innerHTML = '<strong>' + (m.mailbox || '') + '</strong> ' + (m.subject || '(no subject)') + ' — ' + (m.snippet || '') + ' <span style="color:#6b7280">' + m.ts + '</span>';
+          list.appendChild(li);
+        });
+      }
+    }
+    async function syncMailbox(box) {
+      const btn = document.getElementById('sync-' + box);
+      btn.disabled = true; btn.textContent = 'Syncing…';
+      try {
+        await fetch('/api/sync/mail?mailbox=' + encodeURIComponent(box), { method: 'POST' });
+      } catch (_) {}
+      await refresh();
+      btn.disabled = false; btn.textContent = 'Sync ' + box;
     }
     window.addEventListener('load', refresh);
   </script>
@@ -68,6 +91,15 @@ function htmlPage(body) {
     <ul id="audit"></ul>
   </div>
 
+  <div class="card">
+    <h2>Inbox triage (last 30 days, Mail)</h2>
+    <div style="margin-bottom:0.5rem">
+      <button id="sync-Inbox" onclick="syncMailbox('Inbox')">Sync Inbox</button>
+      <button id="sync-Sent" onclick="syncMailbox('Sent')">Sync Sent</button>
+    </div>
+    <ul id="messages"></ul>
+  </div>
+
   <p style="color:#6b7280;font-size:12px">Local-first. No cloud egress beyond allowlist. Future approvals default to WhatsApp when writes are introduced.</p>
 </body>
 </html>`;
@@ -87,6 +119,27 @@ app.get('/api/status', async (_req, res) => {
 app.post('/api/kill-switch', async (req, res) => {
   try {
     const r = await fetch(`${apiBase}/api/kill-switch`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req.body || {}) });
+    const j = await r.json();
+    res.json(j);
+  } catch (e) {
+    res.status(500).json({ error: 'api_unreachable' });
+  }
+});
+
+app.post('/api/sync/mail', async (req, res) => {
+  try {
+    const mailbox = req.query.mailbox || 'Inbox';
+    const r = await fetch(`${apiBase}/api/sync/mail?mailbox=${encodeURIComponent(mailbox)}`, { method: 'POST' });
+    const j = await r.json();
+    res.status(r.status).json(j);
+  } catch (e) {
+    res.status(500).json({ error: 'api_unreachable' });
+  }
+});
+
+app.get('/api/messages', async (_req, res) => {
+  try {
+    const r = await fetch(`${apiBase}/api/messages`);
     const j = await r.json();
     res.json(j);
   } catch (e) {
