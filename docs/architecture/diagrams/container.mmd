@@ -16,6 +16,8 @@ graph TD
     sqldb["SQLite (app data)"]
     vdb["Vector DB (SQLite+VSS)"]
     ui["Web UI (Next.js)"]
+    pg["Postgres (attachments/extractions metadata) :5432 (localhost)"]
+    extractor["Image OCR/Extractor (local, disabled by default)"]
   end
 
   user --> ui
@@ -26,10 +28,13 @@ graph TD
 
   api <--> sqldb
   api <--> vdb
+  api <--> pg
   api <--> macBridge
   workers --> macBridge
   workers --> sqldb
   workers --> vdb
+  workers --> pg
+  workers --> extractor
   workers --> internet
 
   macBridge <--> macApps

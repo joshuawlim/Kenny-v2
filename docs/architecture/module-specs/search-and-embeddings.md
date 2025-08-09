@@ -6,9 +6,11 @@ Enable fast semantic and keyword search over local messages and agent chat using
 ### Scope (MVP)
 - Embed and index `messages.content_snippet` (and `subject` for mail) and `agent_messages.content`.
 - Provide hybrid search: keyword (FTS) + semantic (VSS) reranking.
+- Prepare interface to include `extractions.text` as a searchable source once image processing is enabled (later sprint).
 
 ### Models
 - Embeddings: `nomic-embed-text` via Ollama (configurable). Vector dimension per model (e.g., 768) recorded in metadata.
+ - Vision models are optional and deferred; any future use must be local-only and explicitly enabled.
 
 ### Data Stores
 - Primary: `agent.db` (SQLite) for canonical records.

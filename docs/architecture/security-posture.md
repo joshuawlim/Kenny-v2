@@ -17,11 +17,12 @@
   - `https://web.whatsapp.com` (only if WhatsApp sync enabled)
 - Recommend OS-level enforcement (macOS firewall, Little Snitch profiles).
  - Proxy/UI/API are bound to localhost via Caddy; no remote exposure in MVP.
+ - Postgres is bound to localhost and used only for attachment/extraction metadata.
 
 ### Data Handling
 - SQLite databases stored in local Docker volumes (`app_data`), embeddings in `vectors.db`.
 - No third-party telemetry. Logs remain local.
-- Email bodies limited to recent window; attachments/media not stored in MVP.
+- Email bodies limited to recent window. WhatsApp image attachments are stored locally on disk with checksums; image processing (OCR/vision) is local-only and opt-in (disabled by default).
 - Optional retention knobs for agent chat and embeddings (future work).
 
 ### UI and API Security (MVP)
@@ -32,6 +33,7 @@
 ### Auditing and Approvals
 - All calendar writes gated by explicit approval in UI (see `ADR-0007`).
 - Log structured audit entries for approvals with proposal id, calendar id, and result id.
+ - For image processing (when enabled): record extractor name, start/end timestamps, attachment ids, message ids, and file paths touched in an on-device audit log (rotated locally). No telemetry.
 
 ### Operational Guidance
 - Health endpoints on API, workers, Bridge.

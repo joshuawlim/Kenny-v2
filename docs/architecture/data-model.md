@@ -31,6 +31,8 @@ Represents messages from multiple platforms, including email as a message type.
 - `subject` TEXT NULL -- mail only
 - `content_snippet` TEXT NULL -- short preview
 - `content_body` TEXT NULL -- optional, only when fetched on-demand (recent mail)
+- `has_attachments` INTEGER NOT NULL DEFAULT 0
+- `source_message_id` TEXT NULL -- original source id when applicable
 - `ts` TEXT NOT NULL -- ISO8601 timestamp
 - `is_outgoing` INTEGER NOT NULL DEFAULT 0
 - `source_app` TEXT NOT NULL -- 'Apple Mail' | 'Messages' | 'WhatsApp Web'
@@ -160,10 +162,38 @@ Stores cursors/checkpoints for incremental ETL.
 - `value` INTEGER NOT NULL DEFAULT 0
 - PRIMARY KEY (`date`,`name`)
 
+### Media and Extractions (Postgres)
+
+> These tables live in Postgres to support richer metadata and future job orchestration. Links to `messages` are enforced in the application layer (cross-store).
+
+#### attachments
+- `id` TEXT PRIMARY KEY (UUIDv7)
+- `message_id` INTEGER NOT NULL -- references `messages.id` (app-enforced cross-store)
+- `source` TEXT NOT NULL CHECK (source IN ('whatsapp'))
+- `media_type` TEXT NOT NULL -- e.g., 'image/jpeg','image/png'
+- `file_path` TEXT NOT NULL -- local filesystem path
+- `checksum` TEXT NOT NULL -- sha256
+- `created_at` TEXT NOT NULL -- ISO8601
+
+Indexes:
+- `idx_attachments_message` on (`message_id`)
+
+#### extractions
+- `id` TEXT PRIMARY KEY (UUIDv7)
+- `attachment_id` TEXT NOT NULL -- references attachments(id)
+- `extractor` TEXT NOT NULL -- e.g., 'tesseract','opencv-qr','vision-ocr'
+- `text` TEXT NULL
+- `confidence` REAL NULL
+- `provenance` TEXT NULL -- JSON (bounding boxes, languages, model/version)
+- `created_at` TEXT NOT NULL -- ISO8601
+
+Indexes:
+- `idx_extractions_attachment` on (`attachment_id`)
+
 ### Retention & Privacy
 - Email bodies are stored only when explicitly needed for summarization/classification and limited to a recent time window (e.g., last 30 days).
-- Attachments/media are not stored in MVP.
-- Add configurable retention knobs for optional future cleanup of old `agent_messages` and embeddings.
+- WhatsApp image attachments are stored locally on disk with checksums; processing/extraction is opt-in and disabled by default.
+- Add configurable retention knobs for optional future cleanup of old `agent_messages`, embeddings, and attachments.
 
 #### agent_conversations
 - `id` TEXT PRIMARY KEY (UUIDv7)
