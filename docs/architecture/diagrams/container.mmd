@@ -1,0 +1,38 @@
+graph TD
+  %% Kenny v2 - Container Diagram (Mermaid)
+  user(("User"))
+  internet(("Internet"))
+
+  subgraph "Host (macOS)"
+    macApps["Contacts / Calendar / Mail / Messages / WhatsApp Desktop"]
+    macBridge["macOS Bridge (Python + AppleScript/PyObjC)\nlocalhost HTTP API :5100"]
+    ollama["Ollama (local LLM, Metal) :11434"]
+  end
+
+  subgraph "Docker (Compose)"
+    proxy["Reverse Proxy (Caddy/Traefik)"]
+    api["Agent API + Orchestrator (FastAPI)"]
+    workers["Sync Workers (ETL + Playwright for WhatsApp Web)"]
+    sqldb["SQLite (app data)"]
+    vdb["Vector DB (SQLite+VSS or Chroma)"]
+    ui["Web UI (Next.js)"]
+  end
+
+  user --> ui
+  user --> macApps
+
+  ui --> proxy --> api
+  internet --> proxy
+
+  api <--> sqldb
+  api <--> vdb
+  api <--> macBridge
+  workers --> macBridge
+  workers --> sqldb
+  workers --> vdb
+  workers --> internet
+
+  macBridge <--> macApps
+  api --> ollama
+
+

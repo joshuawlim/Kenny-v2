@@ -1,0 +1,94 @@
+version: "3.9"
+
+services:
+  proxy:
+    image: caddy:2
+    ports:
+      - "127.0.0.1:8080:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - api
+      - ui
+
+  api:
+    build: ../services/api
+    environment:
+      - MAC_BRIDGE_URL=http://host.docker.internal:5100
+      # Optional: local API key if Bridge enforces it
+      # - MAC_BRIDGE_API_KEY=change-me
+      - DB_URL=sqlite:////data/agent.db
+      - VDB_URL=sqlite:////data/vectors.db
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - CALENDAR_REQUIRE_APPROVAL=true
+      - CALENDAR_DEFAULT_CALENDAR_ID=
+      - AGENT_PERSONA_NAME=Kenny
+      # Optional: choose default conversation channel (Phase 2 when sending is enabled)
+      - AGENT_DEFAULT_CHANNEL=whatsapp
+      # Optional: approvals via chat by default (UI surfaces approvals in chat)
+      # - APPROVALS_CHAT_FIRST=true
+      # Optional: embeddings/search tunables
+      # - EMBEDDINGS_MODEL=nomic-embed-text
+      # - EMBEDDINGS_DIM=768
+      # - SEARCH_TOPK_VSS=50
+      # - SEARCH_TOPK_FTS=50
+      # - SEARCH_TOPK_FINAL=20
+    volumes:
+      - app_data:/data
+    depends_on:
+      - vdb
+
+  workers:
+    build: ../services/workers
+    environment:
+      - MAC_BRIDGE_URL=http://host.docker.internal:5100
+      # Optional: local API key if Bridge enforces it
+      # - MAC_BRIDGE_API_KEY=change-me
+      - DB_URL=sqlite:////data/agent.db
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - MAIL_SYNC_MAILBOXES=Inbox,Sent
+      - MAIL_SYNC_INTERVAL_MINUTES=10
+      - MAIL_BODY_MAX_AGE_DAYS=30
+      - IMESSAGE_SYNC_LOOKBACK_DAYS=30
+      - IMESSAGE_SYNC_INTERVAL_MINUTES=10
+      - WHATSAPP_SYNC_LOOKBACK_DAYS=30
+      - WHATSAPP_SYNC_INTERVAL_MINUTES=10
+      - WHATSAPP_ENABLE_SENDING=false
+      # Optional (Phase 2): designate an agent chat thread/contact for WhatsApp
+      - WHATSAPP_AGENT_CONTACT="+61423788836" # or saved contact name
+      - WHATSAPP_AGENT_THREAD_NAME=           # for group chats
+      - LEARNING_ENABLED=false
+      - LEARNING_CURATE_DAILY_HOUR=02:00
+      - WHITELISTED_SITES=
+      - EGRESS_ALLOWLIST=http://host.docker.internal:11434,http://host.docker.internal:5100
+      # Optional: embeddings/search tunables (if workers compute embeddings)
+      # - EMBEDDINGS_MODEL=nomic-embed-text
+      # - EMBEDDINGS_DIM=768
+    volumes:
+      - app_data:/data
+      - whatsapp_profile:/data/whatsapp_profile
+    depends_on:
+      - api
+
+  vdb:
+    image: ghcr.io/asg017/sqlite-vss:latest
+    volumes:
+      - app_data:/data
+
+  ui:
+    build: ../services/ui
+    environment:
+      - API_BASE_URL=http://proxy
+      - CALENDAR_REQUIRE_APPROVAL=true
+      - ENABLE_WEB_CHAT=true
+      - AGENT_PERSONA_NAME=Kenny
+      # Optional: choose default conversation channel for UI affordances
+      - AGENT_DEFAULT_CHANNEL=whatsapp
+      # Optional: approvals via chat by default in UI
+      # - APPROVALS_CHAT_FIRST=true
+
+volumes:
+  app_data:
+  whatsapp_profile:
+
+

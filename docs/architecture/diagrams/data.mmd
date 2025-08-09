@@ -1,0 +1,50 @@
+erDiagram
+  CONTACTS ||--o{ MESSAGES : referenced_by
+
+  CONTACTS {
+    TEXT id PK
+    TEXT external_id
+    TEXT name
+    TEXT phones  "JSON"
+    TEXT emails  "JSON"
+    TEXT job_title
+    TEXT interests "JSON"
+    TEXT source_app
+    TEXT updated_at
+  }
+
+  MESSAGES {
+    INTEGER id PK
+    TEXT platform "imessage|whatsapp|mail"
+    TEXT external_id
+    TEXT thread_external_id
+    TEXT mailbox
+    TEXT sender_id
+    TEXT recipient_ids "JSON"
+    TEXT subject
+    TEXT content_snippet
+    TEXT content_body
+    TEXT ts
+    INTEGER is_outgoing
+    TEXT source_app
+    TEXT created_at
+    TEXT updated_at
+  }
+
+  EVENTS {
+    TEXT id PK
+    TEXT title
+    TEXT start
+    TEXT end
+    TEXT attendees "JSON"
+    TEXT source_app
+    TEXT updated_at
+  }
+
+  SYNC_STATE {
+    TEXT source PK
+    TEXT cursor
+    TEXT updated_at
+  }
+
+
