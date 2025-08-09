@@ -11,6 +11,7 @@ We need a pragmatic way to align code with architecture as Kenny v2 evolves. Dec
 - Maintain C4-style diagrams in `docs/architecture/diagrams/` using Mermaid.
 - Require a Module Specification for any new/changed module with external interfaces.
 - Link ADRs and updated diagrams/specs in related PRs.
+- Numbering is monotonically increasing; if conflicts occur (duplicate numbers), keep both files and rely on titles. Supersession must be explicit via a "Status: Superseded by ADR-XXXX" note in the older ADR.
 
 ## Consequences
 - Lightweight governance adds small overhead but improves clarity and onboarding.

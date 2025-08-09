@@ -1,7 +1,7 @@
 # ADR-0008: Establish Contacts Knowledge Base module
 
 Date: 2025-08-09
-Status: Proposed
+Status: Superseded by ADR-0016
 
 ## Context
 Personalized assistance requires a local, structured view of contacts and relationships, with privacy-preserving storage and querying.
@@ -13,6 +13,9 @@ Personalized assistance requires a local, structured view of contacts and relati
 ## Consequences
 - Enables smarter context in approvals and recommendations.
 - Requires data model alignment and minimal APIs.
+
+## Supersession
+- This ADR is superseded by ADR-0016, which defines the accepted schema extensions, provenance, and UI considerations.
 
 ## References
 - diagrams/data.mmd
