@@ -11,6 +11,8 @@ services:
 
   api:
     build: ../services/api
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - MAC_BRIDGE_URL=http://host.docker.internal:5100
       # Optional: local API key if Bridge enforces it
@@ -43,6 +45,8 @@ services:
 
   workers:
     build: ../services/workers
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - MAC_BRIDGE_URL=http://host.docker.internal:5100
       # Optional: local API key if Bridge enforces it
