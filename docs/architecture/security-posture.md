@@ -1,4 +1,4 @@
-## Security Posture
+# Security Posture
 
 This document defines the baseline security principles and controls for Kenny v2.
 

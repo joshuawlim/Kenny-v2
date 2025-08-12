@@ -1,4 +1,4 @@
-## Non-Functional Requirements (NFRs)
+# Non-Functional Requirements (NFRs)
 
 Target quality attributes for the MVP. Update as measurements are gathered.
 

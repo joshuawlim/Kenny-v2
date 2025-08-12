@@ -1,4 +1,4 @@
-## Architecture
+# Architecture
 
 This directory centralizes design knowledge and decisions for Kenny v2. It follows a pragmatic, documentation-as-code approach.
 
