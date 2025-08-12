@@ -25,7 +25,8 @@ services:
       - CALENDAR_DEFAULT_CALENDAR_ID=
       - AGENT_PERSONA_NAME=Kenny
       # Optional: choose default conversation channel (Phase 2 when sending is enabled)
-      - AGENT_DEFAULT_CHANNEL=whatsapp
+      # Options: web (default), telegram, whatsapp, imessage
+      - AGENT_DEFAULT_CHANNEL=web
       # Optional: approvals via chat by default (UI surfaces approvals in chat)
       # - APPROVALS_CHAT_FIRST=true
       # Optional: embeddings/search tunables
@@ -90,7 +91,8 @@ services:
       - ENABLE_WEB_CHAT=true
       - AGENT_PERSONA_NAME=Kenny
       # Optional: choose default conversation channel for UI affordances
-      - AGENT_DEFAULT_CHANNEL=whatsapp
+      # Options: web (default), telegram, whatsapp, imessage
+      - AGENT_DEFAULT_CHANNEL=web
       - IMAGE_PROCESSING_ENABLED=false
   postgres:
     image: postgres:16-alpine

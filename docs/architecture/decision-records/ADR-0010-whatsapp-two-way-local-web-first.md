@@ -8,6 +8,7 @@ Accepted
 - Priorities: robustness first, but prefer local-only. WhatsApp Business API is robust but requires cloud/webhooks and Meta processing. Web automation is local but more fragile.
 
 ### Decision
+- Web Chat remains the default conversation and approvals channel.
 - Phase 2: implement optional sending via WhatsApp Web automation (Playwright) locally. Default disabled.
 - If fragility becomes problematic, consider switching to WhatsApp Business API as a non-local exception (explicitly documented and opt-in).
 

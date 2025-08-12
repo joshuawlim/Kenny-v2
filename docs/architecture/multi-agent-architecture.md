@@ -24,7 +24,7 @@ Kenny v2 refactored into a coordinator-led multi-agent system where each service
 - Request routing and plan decomposition
 - Adjudication and approvals management
 - Conflict resolution and guardrails
-- Conversation/session management
+- Conversation/session management (default via Web Chat; optional channels: Telegram/WhatsApp/iMessage)
 
 **State Management:**
 - Global conversation/session state
@@ -218,3 +218,62 @@ Each agent registers with the Agent Registry at startup, declaring:
 - **Debugging**: Reduced time to diagnose issues
 - **Monitoring**: Improved system health visibility
 - **Maintenance**: Easier system updates and modifications
+
+## Message and State Model
+
+- Typed messages: JSON envelope with `request_id`, `session_id`, `user_id`, `policy_ctx`, `step_budget` and a typed payload per capability schema.
+- Short‑lived per‑task scratchpad plus session memory governed by retention policies (per‑source TTL, redact strategies).
+- Bounded loops: the coordinator enforces max handoffs and reflection steps to avoid infinite bouncing.
+
+## Core Flows
+
+1) Simple query (read‑only)
+- Plan: Mail.messages.search → Memory.memory.summarize → Reviewer → Response.
+
+2) Write with approval
+- Plan: Contacts.resolve → WebChat.session.notify (default) or Channel.search (Telegram/WhatsApp/iMessage, if enabled) → Calendar.calendar.propose_event → UI approval → Calendar.calendar.write_event.
+
+3) Cross‑channel task
+- Plan: Mail.messages.search(thread) → Memory.memory.summarize → WhatsApp.chats.propose_reply → Reviewer → UI approval → WhatsApp.chats.send (if enabled).
+
+## Example Capability Map (abbreviated)
+
+- MailAgent:
+  - `messages.search({query, time_range}) → {message_ids, snippets, meta}`
+  - `messages.read({message_id}) → {headers, body, attachments}`
+  - `messages.propose_reply({thread_id, summary}) → {draft_text}`
+
+- CalendarAgent:
+  - `calendar.propose_event({title, attendees, window, duration, constraints}) → {event_draft}`
+  - `calendar.write_event({event_draft, calendar_id}) → {event_id}`
+
+- WhatsAppAgent:
+  - `chats.search({contact, time_range, keywords}) → {messages}`
+  - `chats.propose_reply({thread_id, summary}) → {draft_text}`
+
+- MemoryAgent:
+  - `memory.retrieve({sources, query, k}) → {chunks, citations}`
+  - `memory.embed({text, tags}) → {vector_id}`
+
+See `schemas/agent-manifest.json` for the manifest schema and capability verb format.
+
+## Guardrails
+
+- Hard step budgets and timeouts prevent infinite bounce.
+- Tools remain private to agents; the coordinator only sees high‑level capabilities.
+- Per‑step structured logs and trace view across the plan DAG improve debuggability.
+- Coordinator maintains an execution budget; cache stable sub‑results in MemoryAgent.
+
+## Adding a New Service
+
+1) Implement NewServiceAgent using the SDK template.
+2) Define capabilities and JSON Schemas in `manifest.json` with policy annotations.
+3) Add a router rule mapping intents → capabilities.
+4) Provide e2e tests for conformance, policy enforcement, and planner integration.
+5) Update egress allowlist and policy config if external domains are required.
+
+## References
+
+- Databricks: Agent system design patterns
+- LangGraph: Multi‑agent concepts and supervisor patterns
+- SuperAGI: Designing multi‑agent systems (patterns and pitfalls)

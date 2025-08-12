@@ -19,6 +19,6 @@ Accepted
 - Bridge endpoints (Phase 2):
   - `POST /v1/messages/imessage/send` → `{ handle, text }` or `{ thread_id, text }`
 - Exclusion: mark the agent’s iMessage thread as `is_agent_channel=1` and `exclude_from_automation=1`.
-- UI: allow the user to pick iMessage or Web Chat as the default channel to talk to Kenny.
+- UI: allow the user to pick a preferred channel (Telegram/iMessage/WhatsApp) if enabled; Web Chat remains the default.
 
 

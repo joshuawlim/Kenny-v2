@@ -9,7 +9,7 @@ Provide a user-facing queue where the agent proposes events extracted from messa
 
 ### Flow
 1) Triage workers/LLM identify actionable items and create a Proposal record with suggested title/time/attendees.
-2) UI displays proposals with source message context and an “Approve” button. Chat-first approvals are supported in Web Chat; macOS notifications are not used by default.
+2) UI displays proposals with source message context and an “Approve” button. Chat-first approvals are handled in the Web Chat (default); macOS notifications are not used by default.
 3) On approval, the UI requires the user to pick a target calendar (default can be suggested via `CALENDAR_DEFAULT_CALENDAR_ID`), then the API calls the Bridge `POST /v1/calendar/events`.
 4) Store result id, mark proposal as approved, and optionally write back a confirmation reply in the originating channel (Phase 2, off by default).
 
@@ -38,7 +38,7 @@ Indexes:
 ### Config
 - `CALENDAR_REQUIRE_APPROVAL=true` (default)
 - `CALENDAR_DEFAULT_CALENDAR_ID` (optional)
- - `AGENT_DEFAULT_CHANNEL=whatsapp|imessage|web`
- - `APPROVALS_CHAT_FIRST=true` (default)
+- `AGENT_DEFAULT_CHANNEL=web|telegram|whatsapp|imessage`
+- `APPROVALS_CHAT_FIRST=true` (default)
 
 

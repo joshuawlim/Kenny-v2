@@ -1,15 +1,19 @@
-%% Mermaid system context (C4 Level 1)
+%% Mermaid system context (C4 Level 1) — Coordinator-led multi-agent
 
 flowchart LR
   user["End User"]
-  kenny(("Kenny v2 (Local)"))
-  ollama["Ollama (Local LLM :11434)"]
+  webui["Web Chat (Default)"]
+  coordinator(("Coordinator (Local, LangGraph)"))
+  agents["Service Agents (Mail, iMessage, WhatsApp, Calendar, Contacts, Memory, Web, Observability)"]
+  ollama["Ollama (Local LLM/Embeddings :11434)"]
   bridge["macOS Bridge (Local HTTP :5100)"]
-  wa["WhatsApp Web"]
+  wa["WhatsApp Web (Allowlisted)"]
   appleApps["Mail / Messages / Contacts / Calendar (macOS)"]
 
-  user -->|uses| kenny
-  kenny -->|LLM calls| ollama
-  kenny -->|host APIs| bridge
+  user --> webui
+  webui --> coordinator
+  coordinator -->|invokes| agents
+  coordinator -->|LLM calls| ollama
+  agents -->|host APIs| bridge
   bridge <--> appleApps
-  kenny -->|read-only sync| wa
+  agents -->|read-only sync| wa

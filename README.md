@@ -8,6 +8,7 @@ This repository uses a lightweight architecture governance approach so that desi
   - Architecture Decision Records (ADRs)
   - C4 diagrams
   - Module specifications and templates
+  - Multi‑agent architecture spec and implementation plan (`docs/architecture/multi-agent-architecture.md`, `docs/architecture/implementation-plan.md`)
 
 ### How we make architecture decisions
 1. Create an ADR using the template in `docs/architecture/templates/adr-template.md`.
@@ -40,6 +41,8 @@ Bring-up sequence:
    ```
 4) Open `http://localhost:8080` for the Web UI. Chat with the agent at `/chat` (local Web Chat). WhatsApp chat remains read-only in MVP.
 
+Note: The system is being refactored to a coordinator‑led multi‑agent architecture. Current services (`services/api`, `services/workers`, `services/ui`) remain functional during migration. See the multi‑agent docs for the target design and migration phases.
+
 WhatsApp (read-only) pairing (once):
 - The workers will guide a one-time QR scan for WhatsApp Web and persist the session to a Docker volume (`whatsapp_profile`).
 
@@ -50,15 +53,20 @@ See ADRs for design choices:
 - `docs/architecture/decision-records/ADR-0005-mail-scope-inbox-sent.md`
 - `docs/architecture/decision-records/ADR-0007-calendar-approval.md`
 - `docs/architecture/decision-records/ADR-0008-conversational-channels.md`
- - `docs/architecture/decision-records/ADR-0009-agent-persona-kenny-and-local-chat-history.md`
- - `docs/architecture/decision-records/ADR-0010-whatsapp-two-way-local-web-first.md`
-  - `docs/architecture/decision-records/ADR-0011-imessage-two-way-phase-2.md`
-  - `docs/architecture/decision-records/ADR-0012-local-egress-allowlist.md`
-  - `docs/architecture/decision-records/ADR-0014-memory-learning.md`
-  - `docs/architecture/decision-records/ADR-0015-website-whitelist-access.md`
-  - `docs/architecture/decision-records/ADR-0016-contacts-knowledge-base.md`
-  - `docs/architecture/decision-records/ADR-0017-observability-dashboard.md`
-   - `docs/architecture/decision-records/ADR-0019-whatsapp-image-understanding-local.md`
+- `docs/architecture/decision-records/ADR-0009-agent-persona-kenny-and-local-chat-history.md`
+- `docs/architecture/decision-records/ADR-0010-whatsapp-two-way-local-web-first.md`
+- `docs/architecture/decision-records/ADR-0011-imessage-two-way-phase-2.md`
+- `docs/architecture/decision-records/ADR-0012-local-egress-allowlist.md`
+- `docs/architecture/decision-records/ADR-0014-memory-learning.md`
+- `docs/architecture/decision-records/ADR-0015-website-whitelist-access.md`
+- `docs/architecture/decision-records/ADR-0016-contacts-knowledge-base.md`
+- `docs/architecture/decision-records/ADR-0017-observability-dashboard.md`
+- `docs/architecture/decision-records/ADR-0018-default-conversation-channel-whatsapp.md` (Default is now Web Chat; see ADR for details)
+- `docs/architecture/decision-records/ADR-0019-whatsapp-image-understanding-local.md`
+- `docs/architecture/decision-records/ADR-0020-storage-architecture-local-sqlite-plus-postgres-media.md`
+- `docs/architecture/decision-records/ADR-0021-multi-agent-architecture.md`
+- `docs/architecture/decision-records/ADR-0022-orchestration-framework-langgraph.md`
+- `docs/architecture/decision-records/ADR-0023-agent-manifest-and-registry.md`
 
 Mail scope (MVP): Inbox and Sent only; bodies fetched on-demand for recent emails.
 
@@ -71,7 +79,7 @@ Calendar writes require approval:
 Agent persona and chat:
 - Default persona name is "Kenny" (`AGENT_PERSONA_NAME`).
 - Agent chat history is stored locally and searchable in the Web UI.
-  - Default conversational channel can be chosen later (Phase 2) via `AGENT_DEFAULT_CHANNEL=whatsapp|imessage|web`. Web Chat is primary in MVP.
+  - Default conversational channel can be chosen later (Phase 2) via `AGENT_DEFAULT_CHANNEL=web|telegram|whatsapp|imessage`. Web Chat is the default and primary in MVP.
   - For WhatsApp agent chat (when send is enabled in Phase 2), you can set one of:
     - `WHATSAPP_AGENT_CONTACT` (1:1 chat; phone or saved contact name)
     - `WHATSAPP_AGENT_THREAD_NAME` (group chat name). Leave both empty to choose in the Settings UI later.

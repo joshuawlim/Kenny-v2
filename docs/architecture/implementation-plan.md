@@ -60,7 +60,7 @@ services/agent-registry/
 - `GET /capabilities` - List all available capabilities
 - `GET /capabilities/{verb}` - Get capability details
 
-#### 0.2 Coordinator Skeleton
+#### 0.2 Coordinator Skeleton (LangGraph)
 **Goal**: Create the basic coordinator service with LangGraph integration
 
 **Components**:
@@ -90,7 +90,7 @@ services/coordinator/
     └── test_coordinator.py
 ```
 
-#### 0.3 Base Agent Framework
+#### 0.3 Base Agent Framework (Agent SDK)
 **Goal**: Create the foundation for all service agents
 
 **Components**:
@@ -305,6 +305,9 @@ services/mail-agent/
 2. **Feature Flags**: Use feature flags to switch between old and new implementations
 3. **Gradual Rollout**: Migrate one service at a time
 4. **Rollback Plan**: Maintain ability to quickly revert to previous implementation
+
+### Contracts First
+- Define capability verbs and JSON Schemas up front per agent and register them in the Agent Registry. Coordinator routing/planning uses only declared capabilities.
 
 ### Data Migration
 1. **Schema Compatibility**: Maintain backward compatibility during transition

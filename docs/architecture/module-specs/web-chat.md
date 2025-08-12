@@ -1,7 +1,7 @@
 ## Module Spec: Web Chat UI
 
 ### Purpose
-Provide a local web interface to converse with the agent, browse proposed actions (e.g., calendar events), and approve or decline them.
+Provide a local web interface to converse with the agent, browse proposed actions (e.g., calendar events), and approve or decline them. Web Chat is the default conversation mechanism.
 
 ### Scope (MVP)
 - Chat with the agent (multi-turn), grounded on local data.
@@ -20,9 +20,10 @@ Provide a local web interface to converse with the agent, browse proposed action
   - `GET /v1/proposals` and `POST /v1/proposals/{id}/approve`
   - `GET /v1/search?q=...` (messages/contacts)
  - Configuration:
-   - `AGENT_PERSONA_NAME=Kenny`
-   - `ENABLE_WEB_CHAT=true`
-    - `APPROVALS_CHAT_FIRST=true` (use chat for approvals by default)
+ - `AGENT_PERSONA_NAME=Kenny`
+ - `ENABLE_WEB_CHAT=true`
+ - `AGENT_DEFAULT_CHANNEL=web` (optional override supported: `telegram|whatsapp|imessage`)
+ - `APPROVALS_CHAT_FIRST=true` (use chat for approvals by default)
 
 ### Data
 - `agent_conversations`:
