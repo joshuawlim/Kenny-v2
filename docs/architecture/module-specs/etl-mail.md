@@ -30,5 +30,3 @@ class MailETL:
 - No persistent storage of mail credentials
 - Local-only processing per security posture
 - Audit trail for all sync operations
-
-

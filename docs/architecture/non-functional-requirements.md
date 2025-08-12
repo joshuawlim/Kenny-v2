@@ -23,4 +23,3 @@ Target quality attributes for the MVP. Update as measurements are gathered.
   - Docs kept in ADRs and module specs. Lint passes clean. Clear module boundaries.
 - Portability
   - macOS host required for Bridge permissions. Containers otherwise portable; Ollama on host.
-

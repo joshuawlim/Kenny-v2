@@ -1,23 +1,15 @@
 # Module Spec: Web Chat UI
-
-
 ## Purpose
 Provide a local web interface to converse with the agent, browse proposed actions (e.g., calendar events), and approve or decline them. Web Chat is the default conversation mechanism.
-
-
 ## Scope (MVP)
 - Chat with the agent (multi-turn), grounded on local data.
 - Approve calendar proposals from the approvals queue.
 - Search messages/contacts.
 - Persona name: "Kenny" (configurable via `AGENT_PERSONA_NAME`).
-
-
 ## UI
 - Route: `/chat`
 - Panels: chat stream, proposals sidebar, search bar.
 - Messages show role (user/assistant) and optional linked sources.
-
-
 ## Backend
 - Uses Agent API for:
   - `POST /v1/chat` → stream responses from Ollama
@@ -28,8 +20,6 @@ Provide a local web interface to converse with the agent, browse proposed action
   - `ENABLE_WEB_CHAT=true`
   - `AGENT_DEFAULT_CHANNEL=web` (optional override supported: `telegram|whatsapp|imessage`)
   - `APPROVALS_CHAT_FIRST=true` (use chat for approvals by default)
-
-
 ## Data
 - `agent_conversations`:
   - `id` TEXT PK
@@ -40,11 +30,7 @@ Provide a local web interface to converse with the agent, browse proposed action
   - `role` TEXT CHECK(role IN ('user','assistant'))
   - `content` TEXT
   - `created_at` TEXT
-
-
 ## Duplication Avoidance
 - All agent chat messages are stored in dedicated tables and are not inserted into the unified `messages` table.
 - The approvals actions refer to `proposals` which link to source messages; agent chat is not considered a source signal for triage.
 - For channels that support sending (Phase 2), the specific agent conversation thread is marked as `is_agent_channel=1` and excluded from automation.
-
-

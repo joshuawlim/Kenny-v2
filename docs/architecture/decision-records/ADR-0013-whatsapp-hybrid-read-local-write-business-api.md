@@ -21,5 +21,3 @@ Proposed (for future use)
 - Exposure: secure public endpoint (e.g., Tailscale Funnel or Cloudflare Tunnel) for Business API webhooks.
 - Mapping: store a mapping between local contacts and Business API identities; ensure messages to the user’s own personal WhatsApp are not routed via Business API.
 - Configuration flags to enable hybrid mode and route channels accordingly.
-
-

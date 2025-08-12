@@ -20,5 +20,3 @@ Accepted
 - Configuration: `WHITELISTED_SITES` (comma-separated domains/URLs), `EGRESS_ALLOWLIST` aligned with ADR-0012.
 - Worker features: login flows, session persistence per site, scheduled fetch windows, HTML snapshot archiving for auditability.
 - Privacy: store minimal necessary data; redact PII not needed for planning.
-
-

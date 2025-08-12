@@ -49,5 +49,3 @@ class ObservabilityDashboard:
 - **Metrics collection**: Prometheus-compatible metrics
 - **Log aggregation**: Centralized logging for correlation
 - **External monitoring**: Optional integration with local monitoring tools
-
-

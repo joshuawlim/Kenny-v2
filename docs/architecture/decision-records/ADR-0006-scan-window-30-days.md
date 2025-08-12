@@ -28,5 +28,3 @@ Accepted
   - `WHATSAPP_SYNC_LOOKBACK_DAYS=30`
   - `WHATSAPP_SYNC_INTERVAL_MINUTES=10`
 - Bridge endpoints accept `since=ISO8601`; if omitted, workers will compute `now - LOOKBACK_DAYS`.
-
-

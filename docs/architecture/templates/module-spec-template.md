@@ -29,5 +29,3 @@
 
 ## Migration/Versioning
 - Backward compatibility, deprecation policy, rollout plan.
-
-

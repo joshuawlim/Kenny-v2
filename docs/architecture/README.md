@@ -36,5 +36,3 @@ This directory centralizes design knowledge and decisions for Kenny v2. It follo
 - Diagrams are Mermaid `.mmd` files.
 - Reference files and modules using backticks and repository-relative paths.
 - Prefer clear, high-verbosity prose with precise terminology.
-
-

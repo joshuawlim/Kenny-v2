@@ -52,5 +52,3 @@ class SearchAndEmbeddings:
 - **Search parameters**: Adjustable relevance thresholds and result limits
 - **Indexing strategy**: Configurable batch sizes and processing intervals
 - **Cache settings**: Memory and disk cache configuration
-
-

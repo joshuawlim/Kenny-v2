@@ -18,5 +18,3 @@ What becomes easier or more difficult to do because of this change?
 
 ## References
 - Links, prior ADRs, discussions
-
-

@@ -45,5 +45,3 @@ class WebWhitelistAccess:
 - **Graceful degradation**: Fall back to local functionality when external access fails
 - **Retry logic**: Exponential backoff for transient failures
 - **Circuit breaker**: Stop requests to failing services
-
-

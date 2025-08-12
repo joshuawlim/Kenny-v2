@@ -17,5 +17,3 @@ Only synchronize messages from the Inbox and Sent mailboxes. Other folders/label
 ### Implementation Notes
 - Configure workers with `MAIL_SYNC_MAILBOXES=Inbox,Sent`.
 - Expose mailbox parameter in Bridge endpoint (`mailbox=`) and validate allowed values.
-
-

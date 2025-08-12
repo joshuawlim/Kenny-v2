@@ -64,5 +64,3 @@ Expose a minimal local HTTP API on macOS to read (and later write) data from sys
 - Default lookback if `since` is omitted (computed by workers): 30 days.
 - Validate `calendar_id` against `GET /v1/calendar/list` and reject unknown ids.
  - Log structured events with request ids for correlation with API/workers.
-
-

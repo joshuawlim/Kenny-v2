@@ -23,5 +23,3 @@ Accepted
 - Tables: `sync_runs`, `metrics_counters_daily` (see data model).
 - Emit counters from workers and API at key points (post-sync, post-classification, post-approval, post-event-create).
 - UI: `/dashboard` with charts and status panels; export CSV.
-
-

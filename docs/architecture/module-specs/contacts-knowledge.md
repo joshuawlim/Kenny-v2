@@ -47,5 +47,3 @@ class ContactsKnowledge:
 - **Indexing**: Fast lookup by email, phone, and name
 - **Caching**: Frequently accessed contact information
 - **Batch operations**: Efficient bulk contact updates
-
-

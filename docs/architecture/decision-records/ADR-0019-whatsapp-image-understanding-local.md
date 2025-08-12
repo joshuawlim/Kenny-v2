@@ -33,5 +33,3 @@ Accepted — Sprint 1 adds infra hooks (schema, Postgres, toggles, health); extr
 
 ### Alternatives Considered
 - Store everything in SQLite: simpler, but Postgres chosen for richer metadata patterns and potential job orchestration needs.
-
-

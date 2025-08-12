@@ -21,5 +21,3 @@ We need a pragmatic way to align code with architecture as Kenny v2 evolves. Dec
 ## Follow-ups
 - Define initial NFR targets once product constraints are known.
 - Add container and component diagrams as the system shape emerges.
-
-
