@@ -1,0 +1,173 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agent Manifest",
+  "description": "Schema for agent capability registration with the Agent Registry",
+  "type": "object",
+  "required": ["agent_id", "capabilities", "data_scopes", "tool_access"],
+  "properties": {
+    "agent_id": {
+      "type": "string",
+      "description": "Unique identifier for the agent",
+      "pattern": "^[a-z0-9-]+$",
+      "examples": ["mail-agent", "whatsapp-agent", "calendar-agent"]
+    },
+    "version": {
+      "type": "string",
+      "description": "Agent version in semver format",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "default": "1.0.0"
+    },
+    "display_name": {
+      "type": "string",
+      "description": "Human-readable name for the agent",
+      "examples": ["Mail Agent", "WhatsApp Agent", "Calendar Agent"]
+    },
+    "description": {
+      "type": "string",
+      "description": "Brief description of the agent's purpose"
+    },
+    "capabilities": {
+      "type": "array",
+      "description": "List of capabilities this agent provides",
+      "items": {
+        "$ref": "#/definitions/capability"
+      },
+      "minItems": 1
+    },
+    "data_scopes": {
+      "type": "array",
+      "description": "Data domains this agent can access",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z]+:[a-z-]+$"
+      },
+      "examples": ["mail:inbox", "mail:sent", "whatsapp:chats", "calendar:events"]
+    },
+    "tool_access": {
+      "type": "array",
+      "description": "Local tools/endpoints this agent needs access to",
+      "items": {
+        "type": "string"
+      },
+      "examples": ["macos-bridge", "sqlite-db", "postgres-media", "ollama"]
+    },
+    "egress_domains": {
+      "type": "array",
+      "description": "External domains this agent may need to access",
+      "items": {
+        "type": "string",
+        "format": "uri"
+      },
+      "default": []
+    },
+    "health_check": {
+      "type": "object",
+      "description": "Health check configuration for the agent",
+      "properties": {
+        "endpoint": {
+          "type": "string",
+          "description": "Health check endpoint path",
+          "default": "/health"
+        },
+        "interval_seconds": {
+          "type": "integer",
+          "description": "Health check interval in seconds",
+          "minimum": 30,
+          "default": 60
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "description": "Health check timeout in seconds",
+          "minimum": 5,
+          "maximum": 60,
+          "default": 10
+        }
+      },
+      "required": ["endpoint"]
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Additional agent-specific metadata",
+      "additionalProperties": true
+    }
+  },
+  "definitions": {
+    "capability": {
+      "type": "object",
+      "required": ["verb", "input_schema", "output_schema"],
+      "properties": {
+        "verb": {
+          "type": "string",
+          "description": "Action verb for this capability",
+          "pattern": "^[a-z]+\\.[a-z_]+$",
+          "examples": ["messages.search", "calendar.propose_event", "contacts.resolve"]
+        },
+        "input_schema": {
+          "type": "object",
+          "description": "JSON Schema for capability inputs",
+          "$ref": "http://json-schema.org/draft-07/schema#"
+        },
+        "output_schema": {
+          "type": "object",
+          "description": "JSON Schema for capability outputs",
+          "$ref": "http://json-schema.org/draft-07/schema#"
+        },
+        "safety_annotations": {
+          "type": "array",
+          "description": "Safety and permission annotations",
+          "items": {
+            "type": "string",
+            "enum": ["read-only", "write-requires-approval", "local-only", "no-egress", "pii-sensitive"]
+          },
+          "default": ["read-only"]
+        },
+        "sla": {
+          "type": "object",
+          "description": "Service level agreement parameters",
+          "properties": {
+            "latency_ms": {
+              "type": "integer",
+              "description": "Expected response time in milliseconds",
+              "minimum": 1
+            },
+            "rate_limit": {
+              "type": "integer",
+              "description": "Maximum requests per minute",
+              "minimum": 1
+            },
+            "max_tokens": {
+              "type": "integer",
+              "description": "Maximum token usage per request",
+              "minimum": 1
+            },
+            "timeout_seconds": {
+              "type": "integer",
+              "description": "Request timeout in seconds",
+              "minimum": 1,
+              "maximum": 300
+            }
+          }
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of this capability"
+        },
+        "examples": {
+          "type": "array",
+          "description": "Example input/output pairs",
+          "items": {
+            "type": "object",
+            "properties": {
+              "input": {
+                "description": "Example input for this capability"
+              },
+              "output": {
+                "description": "Example output from this capability"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
