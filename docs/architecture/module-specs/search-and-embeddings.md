@@ -1,43 +1,56 @@
-## Module Spec: Local Search and Embeddings
+# Search and Embeddings Module Specification
 
-### Purpose
-Enable fast semantic and keyword search over local messages and agent chat using embeddings and SQLite FTS/VSS, fully local.
+## Overview
+Search and embeddings module provides local semantic search capabilities across all Kenny data using local LLM embeddings and hybrid search techniques.
 
-### Scope (MVP)
-- Embed and index `messages.content_snippet` (and `subject` for mail) and `agent_messages.content`.
-- Provide hybrid search: keyword (FTS) + semantic (VSS) reranking.
-- Prepare interface to include `extractions.text` as a searchable source once image processing is enabled (later sprint).
+## Design Decisions
+- **Local embeddings**: Per ADR-0003, use Ollama for local embedding generation
+- **Hybrid search**: Combine semantic (embeddings) and keyword search
+- **No cloud egress**: All processing done locally for privacy
+- **Real-time indexing**: Embeddings generated as data is ingested
 
-### Models
-- Embeddings: `nomic-embed-text` via Ollama (configurable). Vector dimension per model (e.g., 768) recorded in metadata.
- - Vision models are optional and deferred; any future use must be local-only and explicitly enabled.
+## Interface
+```python
+class SearchAndEmbeddings:
+    def generate_embedding(self, text: str) -> List[float]
+    def search(self, query: str, filters: Dict = None) -> List[SearchResult]
+    def index_content(self, content_id: str, text: str) -> None
+    def get_similar(self, content_id: str, limit: int = 10) -> List[SearchResult]
+```
 
-### Data Stores
-- Primary: `agent.db` (SQLite) for canonical records.
-- Vector: `vectors.db` (SQLite with `sqlite-vss`) for embeddings.
+## Search Types
+- **Semantic search**: Find content with similar meaning using embeddings
+- **Keyword search**: Traditional text-based search with relevance scoring
+- **Hybrid search**: Combine both approaches for optimal results
+- **Faceted search**: Filter by platform, date, sender, etc.
 
-### Ingestion & Consistency
-1) On upsert to `messages`/`agent_messages`, enqueue embedding job.
-2) Job computes embedding via `OLLAMA_BASE_URL` and writes to `vectors.db` with `{ source_table, source_id, vector, ts }`.
-3) Best-effort dedupe on `{ source_table, source_id }`. Periodic reconciliation detects orphans and re-embeds if the model changed.
+## Data Model
+- `Embedding`: id, content_id, embedding_vector, model_version, created_at
+- `SearchIndex`: content_id, text_content, metadata, last_indexed
+- `SearchResult`: content_id, relevance_score, snippet, metadata
 
-### Query Flow
-1) Accept query text; compute query embedding.
-2) Retrieve top-K by cosine similarity from VSS.
-3) Retrieve top-K keyword matches from FTS.
-4) Merge and rerank; return results with source references.
+## Embedding Generation
+- **Model**: Ollama with local embedding models
+- **Batch processing**: Generate embeddings for new content asynchronously
+- **Model management**: Support multiple embedding models and versions
+- **Quality metrics**: Track embedding quality and consistency
 
-### Configuration
-- `EMBEDDINGS_MODEL=nomic-embed-text`
-- `EMBEDDINGS_DIM=768` (example; auto-detected at startup if not set)
-- `SEARCH_TOPK_VSS=50`, `SEARCH_TOPK_FTS=50`, `SEARCH_TOPK_FINAL=20`
+## Search Performance
+- **Vector indexing**: Efficient similarity search using HNSW or similar
+- **Caching**: Cache frequently accessed embeddings and search results
+- **Async processing**: Non-blocking search operations
+- **Result ranking**: Intelligent ranking based on multiple factors
 
-### Metrics
-- `embeddings_jobs_enqueued/succeeded/failed`
-- `search_latency_ms{mode=vss|fts|hybrid}`
+## Integration Points
+- **Message ingestion**: Generate embeddings for new messages
+- **Contact enrichment**: Semantic search across contact information
+- **Memory retrieval**: Find relevant conversation history
+- **Knowledge base**: Search across all stored information
 
-### Operational Notes
-- Record current embedding model/version in a metadata table; trigger re-embed when changed.
-- Backoff on Ollama timeouts; cache query embeddings per session to reduce latency.
+## Configuration
+- **Embedding model**: Configurable Ollama model for embeddings
+- **Search parameters**: Adjustable relevance thresholds and result limits
+- **Indexing strategy**: Configurable batch sizes and processing intervals
+- **Cache settings**: Memory and disk cache configuration
 
 

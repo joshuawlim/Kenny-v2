@@ -166,6 +166,10 @@ app.get('/api/messages', async (_req, res) => {
   }
 });
 
+app.get('/chat', (_req, res) => {
+  res.redirect('/');
+});
+
 app.get('/', (_req, res) => {
   res.setHeader('Content-Type', 'text/html');
   res.send(htmlPage(''));

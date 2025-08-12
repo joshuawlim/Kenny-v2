@@ -1,30 +1,49 @@
-## Module Spec: Whitelisted Website Access
+# Web Whitelist Access Module Specification
 
-### Purpose
-Fetch and parse information from a small set of approved websites to improve planning (e.g., school calendars, announcements).
+## Overview
+Web whitelist access module provides controlled, allowlisted access to external websites for specific functionality while maintaining local-first security posture.
 
-### Scope (MVP)
-- Headless browser worker (Playwright) with domain allowlist.
-- Session/login support per site; local session storage.
-- Periodic fetch; parse to normalized entries.
+## Design Decisions
+- **Allowlist approach**: Per ADR-0015, only pre-approved websites accessible
+- **Local-first default**: All functionality works offline by default
+- **Selective egress**: Network access only when explicitly required
+- **Audit logging**: All external requests logged and monitored
 
-### HTTP/API
-- Worker internal; exposes `/health` and metrics. Results land in `web_entries` table.
+## Interface
+```python
+class WebWhitelistAccess:
+    def is_whitelisted(self, url: str) -> bool
+    def request_access(self, url: str, purpose: str) -> RequestResult
+    def get_audit_log(self, limit: int = 100) -> List[AuditEntry]
+    def add_to_whitelist(self, url: str, reason: str) -> None
+```
 
-### Data
-- `web_entries`:
-  - `id` TEXT PK
-  - `site` TEXT
-  - `url` TEXT
-  - `title` TEXT
-  - `published_at` TEXT NULL
-  - `content_text` TEXT
-  - `extracted_at` TEXT
-  - `source_snapshot_path` TEXT NULL
+## Whitelist Categories
+- **Essential services**: Calendar APIs, contact sync (when approved)
+- **Information sources**: Weather, news (local sources preferred)
+- **Utilities**: Translation services, currency conversion
+- **Emergency**: Critical system updates, security patches
 
-### Config
-- `WHITELISTED_SITES="https://parent.school1.com,https://parent.school2.com"`
-- `EGRESS_ALLOWLIST` includes the same domains.
-- Credentials via macOS Keychain preferred; or env vars like `SITE1_USERNAME`, `SITE1_PASSWORD`.
+## Security Controls
+- **URL validation**: Strict pattern matching for allowed domains
+- **Rate limiting**: Prevent abuse of external services
+- **Content filtering**: Sanitize responses before local processing
+- **Kill switch**: Immediate disable of all external access
+
+## Audit & Monitoring
+- **Request logging**: All external requests with timestamp, URL, purpose
+- **Response monitoring**: Track success/failure rates and response times
+- **Alerting**: Notify on unusual patterns or security events
+- **Dashboard**: Real-time visibility into external access patterns
+
+## Configuration
+- **Whitelist file**: JSON configuration of allowed URLs and purposes
+- **Environment variables**: Override whitelist for development/testing
+- **Runtime updates**: Add/remove URLs without restart (with approval)
+
+## Error Handling
+- **Graceful degradation**: Fall back to local functionality when external access fails
+- **Retry logic**: Exponential backoff for transient failures
+- **Circuit breaker**: Stop requests to failing services
 
 
