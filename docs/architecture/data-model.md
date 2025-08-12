@@ -1,10 +1,12 @@
-## Data Model (MVP)
+# Data Model (MVP)
 
 Scope focuses on unifying messages across iMessage, WhatsApp, and Apple Mail, plus contacts and calendar. Email scope: Inbox and Sent only (MVP).
 
-### Tables
 
-#### contacts
+## Tables
+
+
+### contacts
 - `id` TEXT PRIMARY KEY (UUIDv7 generated locally)
 - `external_id` TEXT NULL (e.g., CNContact identifier)
 - `name` TEXT NOT NULL
@@ -18,7 +20,8 @@ Scope focuses on unifying messages across iMessage, WhatsApp, and Apple Mail, pl
 Indexes:
 - `idx_contacts_name` on (`name`)
 
-#### messages
+
+### messages
 Represents messages from multiple platforms, including email as a message type.
 
 - `id` INTEGER PRIMARY KEY AUTOINCREMENT
@@ -65,7 +68,8 @@ CREATE VIRTUAL TABLE messages_fts USING fts5(
 - `source_app` TEXT NOT NULL
 - `updated_at` TEXT NOT NULL
 
-#### proposals
+
+### proposals
 - `id` TEXT PRIMARY KEY (UUIDv7)
 - `type` TEXT NOT NULL CHECK (type IN ('calendar_event'))
 - `source_message_id` INTEGER NOT NULL REFERENCES messages(id)
@@ -80,7 +84,8 @@ CREATE VIRTUAL TABLE messages_fts USING fts5(
 - `created_at` TEXT NOT NULL
 - `updated_at` TEXT NOT NULL
 
-#### sync_state
+
+### sync_state
 Stores cursors/checkpoints for incremental ETL.
 - `source` TEXT PRIMARY KEY -- e.g., 'mail:Inbox', 'mail:Sent'
 - `cursor` TEXT NULL -- ISO8601 timestamp or source-specific token
@@ -195,11 +200,13 @@ Indexes:
 - WhatsApp image attachments are stored locally on disk with checksums; processing/extraction is opt-in and disabled by default.
 - Add configurable retention knobs for optional future cleanup of old `agent_messages`, embeddings, and attachments.
 
-#### agent_conversations
+
+### agent_conversations
 - `id` TEXT PRIMARY KEY (UUIDv7)
 - `created_at` TEXT NOT NULL
 
-#### agent_messages
+
+### agent_messages
 - `id` TEXT PRIMARY KEY (UUIDv7)
 - `conversation_id` TEXT NOT NULL REFERENCES agent_conversations(id)
 - `role` TEXT NOT NULL CHECK (role IN ('user','assistant'))
