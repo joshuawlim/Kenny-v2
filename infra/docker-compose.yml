@@ -8,6 +8,20 @@ services:
     depends_on:
       - api
       - ui
+      - agent-registry
+
+  agent-registry:
+    build: ../services/agent-registry
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      - PYTHONPATH=/app/src
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   api:
     build: ../services/api
@@ -37,12 +51,14 @@ services:
       # - SEARCH_TOPK_FINAL=20
       - IMAGE_PROCESSING_ENABLED=false
       - ATTACHMENTS_DIR=/data/attachments
+      - AGENT_REGISTRY_URL=http://agent-registry:8000
     volumes:
       - app_data:/data
       - attachments:/data/attachments
     # SQLite runs in-process; no external DB service required
     depends_on:
       - postgres
+      - agent-registry
 
 
 

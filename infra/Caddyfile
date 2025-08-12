@@ -1,8 +1,17 @@
 :80 {
   encode zstd gzip
+  
+  # Agent Registry Service
+  handle /registry/* {
+    reverse_proxy agent-registry:8000
+  }
+  
+  # API Service
   handle /api/* {
     reverse_proxy api:80
   }
+  
+  # UI Service (default)
   handle /* {
     reverse_proxy ui:3000
   }

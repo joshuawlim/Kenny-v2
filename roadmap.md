@@ -2,7 +2,7 @@
 
 **Project**: Kenny v2 - Local-first, multi-agent personal assistant  
 **Architecture**: Coordinator-led multi-agent system with LangGraph orchestration  
-**Current Status**: Monolithic API with Mail ETL implemented, Bridge stub running  
+**Current Status**: Phase 0.1 COMPLETED - Agent Registry Service operational  
 **Target**: Fully operational multi-agent system with local-first privacy controls  
 
 ## Roadmap Overview
@@ -13,7 +13,7 @@ This roadmap breaks down the project into sequential development phases, with ea
 
 ## Phase 0: Foundation & Infrastructure (Weeks 1-2)
 
-### 0.1 Agent Registry Service
+### 0.1 Agent Registry Service ✅ **COMPLETED**
 **Objective**: Create central service for agent registration and capability discovery
 
 **Components**:
@@ -23,11 +23,21 @@ This roadmap breaks down the project into sequential development phases, with ea
 - Capability routing and discovery
 
 **Success Measures**:
-- [ ] Agent Registry service starts and responds to health checks
-- [ ] Agent manifests can be registered and validated against schema
-- [ ] Capability discovery returns accurate agent listings
-- [ ] Health monitoring detects agent status changes
-- [ ] All endpoints return proper HTTP status codes and error messages
+- [x] Agent Registry service starts and responds to health checks
+- [x] Agent manifests can be registered and validated against schema
+- [x] Capability discovery returns accurate agent listings
+- [x] Health monitoring detects agent status changes
+- [x] All endpoints return proper HTTP status codes and error messages
+
+**Implementation Status**: 
+- ✅ Core registry logic implemented with async support
+- ✅ FastAPI application with all required endpoints
+- ✅ Pydantic V2 models with comprehensive validation
+- ✅ Docker containerization and health checks
+- ✅ Integration with existing infrastructure (docker-compose, Caddy)
+- ✅ Comprehensive test suite (21/21 tests passing)
+- ✅ Egress domain validation per ADR-0012
+- ✅ Health monitoring with configurable intervals
 
 **Files to Create**:
 ```
@@ -564,13 +574,13 @@ services/mail-agent/
 4. **Dependency Installation**: Install required tools and frameworks
 
 ### Week 1-2 Goals
-1. **Agent Registry**: Complete agent registry service implementation
-2. **Coordinator Skeleton**: Create basic coordinator with LangGraph
-3. **Base Framework**: Implement base agent framework
-4. **Testing**: Establish testing framework and initial tests
+1. **Agent Registry**: ✅ COMPLETED - Agent registry service operational
+2. **Coordinator Skeleton**: 🔄 NEXT - Create basic coordinator with LangGraph
+3. **Base Framework**: 🔄 PENDING - Implement base agent framework
+4. **Testing**: ✅ COMPLETED - Testing framework established with comprehensive coverage
 
 ### Success Metrics by Phase
-- **Week 2**: Agent registry operational with coordinator skeleton
+- **Week 2**: ✅ Agent registry operational, 🔄 Coordinator skeleton in progress
 - **Week 4**: Mail agent extracted and operational
 - **Week 6**: Basic coordinator functionality operational
 - **Week 8**: Communication agents operational
