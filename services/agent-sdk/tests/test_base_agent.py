@@ -135,7 +135,9 @@ class TestBaseAgent:
         mock_handler.capability = "test.capability"
         mock_handler.get_manifest = Mock(return_value={
             "verb": "test",
-            "noun": "capability",
+            "input_schema": {"type": "object"},
+            "output_schema": {"type": "object"},
+            "safety_annotations": ["read-only"],
             "description": "Test capability"
         })
         
@@ -143,10 +145,70 @@ class TestBaseAgent:
         
         manifest = agent.generate_manifest()
         assert manifest["agent_id"] == "test-agent"
-        assert manifest["name"] == "Test Agent"
+        assert manifest["display_name"] == "Test Agent"
         assert manifest["description"] == "A test agent"
         assert len(manifest["capabilities"]) == 1
         assert manifest["capabilities"][0]["verb"] == "test"
+        assert "data_scopes" in manifest
+        assert "tool_access" in manifest
+        assert "egress_domains" in manifest
+        assert "health_check" in manifest
+
+    def test_manifest_registry_schema_alignment(self):
+        """Test that generated manifest aligns with registry schema requirements"""
+        class TestAgent(BaseAgent):
+            def __init__(self):
+                super().__init__(
+                    agent_id="test-agent",
+                    name="Test Agent",
+                    description="A test agent",
+                    data_scopes=["mail:inbox", "mail:sent"],
+                    tool_access=["macos-bridge", "sqlite-db"],
+                    egress_domains=[],
+                    health_check={"endpoint": "/health", "interval_seconds": 60, "timeout_seconds": 10}
+                )
+            
+            async def start(self):
+                pass
+            
+            async def stop(self):
+                pass
+        
+        agent = TestAgent()
+        
+        # Register a capability with proper schema
+        mock_handler = Mock(spec=BaseCapabilityHandler)
+        mock_handler.capability = "messages.search"
+        mock_handler.get_manifest = Mock(return_value={
+            "verb": "messages.search",
+            "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}},
+            "output_schema": {"type": "object", "properties": {"results": {"type": "array"}}},
+            "safety_annotations": ["read-only", "local-only"],
+            "description": "Search mail messages"
+        })
+        
+        agent.register_capability(mock_handler)
+        
+        manifest = agent.generate_manifest()
+        
+        # Verify required fields from registry schema
+        assert manifest["agent_id"] == "test-agent"
+        assert manifest["version"] == "1.0.0"
+        assert manifest["display_name"] == "Test Agent"
+        assert manifest["description"] == "A test agent"
+        assert manifest["data_scopes"] == ["mail:inbox", "mail:sent"]
+        assert manifest["tool_access"] == ["macos-bridge", "sqlite-db"]
+        assert manifest["egress_domains"] == []
+        assert manifest["health_check"]["endpoint"] == "/health"
+        
+        # Verify capability structure
+        assert len(manifest["capabilities"]) == 1
+        capability = manifest["capabilities"][0]
+        assert capability["verb"] == "messages.search"
+        assert "input_schema" in capability
+        assert "output_schema" in capability
+        assert "safety_annotations" in capability
+        assert "description" in capability
 
 
 class TestBaseCapabilityHandler:
@@ -188,7 +250,6 @@ class TestBaseCapabilityHandler:
         
         manifest = handler.get_manifest()
         assert manifest["verb"] == "test"
-        assert manifest["noun"] == "capability"
         assert manifest["description"] == "Test capability description"
 
 

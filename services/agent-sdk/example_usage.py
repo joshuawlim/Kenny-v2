@@ -24,14 +24,15 @@ class SearchCapability(BaseCapabilityHandler):
         super().__init__(
             capability="search.query",
             description="Search for information using various sources",
-            parameters_schema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "description": "Search query"},
                     "source": {"type": "string", "description": "Source to search", "default": "all"}
                 },
                 "required": ["query"]
-            }
+            },
+            safety_annotations=["read-only", "local-only"]
         )
     
     async def execute(self, parameters):
@@ -99,7 +100,11 @@ class ExampleAgent(BaseAgent):
         super().__init__(
             agent_id="example-agent",
             name="Example Agent",
-            description="A demonstration agent showing SDK features"
+            description="A demonstration agent showing SDK features",
+            data_scopes=["example:data", "example:search"],
+            tool_access=["database", "search_engine"],
+            egress_domains=[],
+            health_check={"endpoint": "/health", "interval_seconds": 60, "timeout_seconds": 10}
         )
         
         # Register capabilities

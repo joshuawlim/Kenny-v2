@@ -27,7 +27,11 @@ class BaseAgent(ABC):
         agent_id: str,
         name: str,
         description: str,
-        version: str = "1.0.0"
+        version: str = "1.0.0",
+        data_scopes: Optional[List[str]] = None,
+        tool_access: Optional[List[str]] = None,
+        egress_domains: Optional[List[str]] = None,
+        health_check: Optional[Dict[str, Any]] = None
     ):
         """
         Initialize the base agent.
@@ -37,11 +41,19 @@ class BaseAgent(ABC):
             name: Human-readable name for the agent
             description: Description of what the agent does
             version: Version string for the agent
+            data_scopes: Data domains this agent can access
+            tool_access: Local tools/endpoints this agent needs access to
+            egress_domains: External domains this agent may need to access
+            health_check: Health check configuration for the agent
         """
         self.agent_id = agent_id
         self.name = name
         self.description = description
         self.version = version
+        self.data_scopes = data_scopes or []
+        self.tool_access = tool_access or []
+        self.egress_domains = egress_domains or []
+        self.health_check = health_check or {"endpoint": "/health", "interval_seconds": 60, "timeout_seconds": 10}
         self.created_at = datetime.now(timezone.utc)
         self.last_updated = datetime.now(timezone.utc)
         
@@ -183,13 +195,14 @@ class BaseAgent(ABC):
         """
         manifest = {
             "agent_id": self.agent_id,
-            "name": self.name,
-            "description": self.description,
             "version": self.version,
-            "created_at": self.created_at.isoformat(),
-            "last_updated": self.last_updated.isoformat(),
+            "display_name": self.name,
+            "description": self.description,
             "capabilities": [],
-            "tools": []
+            "data_scopes": self.data_scopes,
+            "tool_access": self.tool_access,
+            "egress_domains": self.egress_domains,
+            "health_check": self.health_check
         }
         
         # Add capability manifests
@@ -200,17 +213,12 @@ class BaseAgent(ABC):
             else:
                 # Fallback capability manifest
                 manifest["capabilities"].append({
-                    "capability": capability_name,
+                    "verb": capability_name,
+                    "input_schema": {"type": "object"},
+                    "output_schema": {"type": "object"},
+                    "safety_annotations": ["read-only"],
                     "description": getattr(handler, 'description', 'No description available')
                 })
-        
-        # Add tool manifests
-        for tool_name, tool in self.tools.items():
-            tool_manifest = {
-                "name": tool_name,
-                "description": getattr(tool, 'description', 'No description available')
-            }
-            manifest["tools"].append(tool_manifest)
         
         return manifest
     

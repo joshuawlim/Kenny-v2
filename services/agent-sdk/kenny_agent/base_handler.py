@@ -22,8 +22,9 @@ class BaseCapabilityHandler(ABC):
         capability: str,
         description: str,
         version: str = "1.0.0",
-        parameters_schema: Optional[Dict[str, Any]] = None,
-        returns_schema: Optional[Dict[str, Any]] = None
+        input_schema: Optional[Dict[str, Any]] = None,
+        output_schema: Optional[Dict[str, Any]] = None,
+        safety_annotations: Optional[List[str]] = None
     ):
         """
         Initialize the capability handler.
@@ -32,14 +33,16 @@ class BaseCapabilityHandler(ABC):
             capability: Full capability name (e.g., 'messages.search')
             description: Human-readable description of the capability
             version: Version string for the capability
-            parameters_schema: JSON Schema for input parameters
-            returns_schema: JSON Schema for return values
+            input_schema: JSON Schema for input parameters
+            output_schema: JSON Schema for return values
+            safety_annotations: Safety and permission annotations
         """
         self.capability = capability
         self.description = description
         self.version = version
-        self.parameters_schema = parameters_schema or {}
-        self.returns_schema = returns_schema or {}
+        self.input_schema = input_schema or {}
+        self.output_schema = output_schema or {}
+        self.safety_annotations = safety_annotations or ["read-only"]
         
         # Parse capability into verb and noun
         if '.' in capability:
@@ -75,13 +78,11 @@ class BaseCapabilityHandler(ABC):
             Dictionary containing capability manifest information
         """
         manifest = {
-            "capability": self.capability,
             "verb": self.verb,
-            "noun": self.noun,
-            "description": self.description,
-            "version": self.version,
-            "parameters_schema": self.parameters_schema,
-            "returns_schema": self.returns_schema
+            "input_schema": self.input_schema,
+            "output_schema": self.output_schema,
+            "safety_annotations": self.safety_annotations,
+            "description": self.description
         }
         
         return manifest
@@ -99,17 +100,27 @@ class BaseCapabilityHandler(ABC):
         Returns:
             True if parameters are valid, False otherwise
         """
-        # Basic validation - subclasses can implement more sophisticated logic
-        if not self.parameters_schema:
-            return True  # No schema means accept all parameters
+        # Basic validation - subclasses can implement more sophisticated validation
+        if not self.input_schema:
+            return True  # No schema means all parameters are valid
         
-        # For now, just check if required fields are present
-        required_fields = self.parameters_schema.get("required", [])
-        for field in required_fields:
-            if field not in parameters:
-                return False
-        
+        # TODO: Implement JSON Schema validation
         return True
+    
+    def get_capability_info(self) -> Dict[str, Any]:
+        """
+        Get basic capability information.
+        
+        Returns:
+            Dictionary with capability details
+        """
+        return {
+            "capability": self.capability,
+            "verb": self.verb,
+            "noun": self.noun,
+            "description": self.description,
+            "version": self.version
+        }
     
     def get_usage_examples(self) -> List[Dict[str, Any]]:
         """
