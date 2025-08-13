@@ -1,20 +1,19 @@
-# ADR-0018: Default conversation channel for approvals is WhatsApp
+# ADR-0018: Default conversation channel for approvals is Web Chat
 
 Date: 2025-08-09
-Status: Proposed
+Status: Accepted
 
 ## Context
-We need a reliable, user-friendly channel to request and capture explicit approvals (e.g., calendar events). The target user primarily uses WhatsApp for quick interactions, and we aim to avoid platform-specific notification systems.
+We need a reliable, user-friendly channel to converse with the Coordinator agent ("Kenny") and to request/capture explicit approvals (e.g., calendar events). To preserve privacy and simplicity, the default experience should be entirely local and web-based, while keeping options open to adopt native chat channels later.
 
 ## Decision
-- Use WhatsApp as the default conversation channel for sending approval requests and receiving responses.
-- Fallback to the local web chat when WhatsApp is unavailable.
-- iMessage will be introduced as a two-way channel in a later phase; until then, it remains read-only (where applicable).
-- Keep conversations local-first. Any external API usage must comply with the egress allowlist.
+- Use the local Web Chat as the default conversation channel for interacting with Kenny and for approvals.
+- Preserve future options to enable other channels (opt-in), including Telegram, WhatsApp, and iMessage. These are disabled by default and must comply with the egress allowlist and approval policies.
+- For Phase 2 and beyond, the user can choose a preferred channel via configuration, but the system ships with Web Chat as default.
 
 ## Consequences
-- Faster, familiar approval UX for the user increases response rates and trust.
-- Requires local WhatsApp integration and careful handling to avoid duplication across channels.
+- Web Chat provides a consistent, local-first UX with no additional platform permissions.
+- Optional channels introduce integration complexity and duplication risks; they remain off by default and require clear routing and deduplication rules when enabled.
 
 ## Alternatives Considered
 - macOS notifications: Platform-specific and not chat-centric.

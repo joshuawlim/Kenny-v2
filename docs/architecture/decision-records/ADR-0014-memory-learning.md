@@ -22,5 +22,3 @@ Accepted
 - Data model: add `message_labels`, `feedback_events`, and `model_prompts` (versioned prompt templates) plus `prompt_exemplars`.
 - Learning loop: nightly job curates exemplars from high-confidence and human-validated items (diversity by contact/channel).
 - Safety: store only local data; expose an option to purge exemplars and reset.
-
-

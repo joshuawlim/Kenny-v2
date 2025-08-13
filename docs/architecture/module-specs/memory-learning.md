@@ -1,27 +1,46 @@
-## Module Spec: Memory & Learning
+# Memory and Learning Module Specification
 
-### Purpose
-Improve importance detection and proposal quality over time using local feedback and exemplars.
+## Overview
+Memory and learning module provides persistent storage and retrieval of conversation history, user preferences, and learned patterns for the Kenny persona.
 
-### Scope (MVP)
-- Capture feedback from approvals and message actions.
-- Curate exemplars for classifier prompts and heuristics.
-- Adjustable thresholds per user.
+## Design Decisions
+- **Local storage**: Per ADR-0014, all memory data stored locally
+- **SQLite primary**: Main storage in SQLite for performance
+- **PostgreSQL media**: Large content (images, attachments) in PostgreSQL
+- **Searchable**: Full-text search across conversation history
 
-### Flow
-1) Collect signals: approvals (approve/reject), mark-important, snooze, ignore.
-2) Persist `feedback_events` and derive `message_labels`.
-3) Nightly curator job selects diverse, high-quality examples into `prompt_exemplars`.
-4) Classifier prompts include exemplars; thresholds tuned from recent performance metrics.
+## Interface
+```python
+class MemoryLearning:
+    def store_conversation(self, conversation: Conversation) -> str
+    def retrieve_context(self, query: str, limit: int = 10) -> List[Memory]
+    def learn_preference(self, user_id: str, preference: Preference) -> None
+    def get_user_profile(self, user_id: str) -> UserProfile
+```
 
-### Data
-- `message_labels(message_id, label, confidence, source, created_at)`
-- `feedback_events(item_type, item_id, action, created_at)`
-- `model_prompts(name, version, template, created_at)`
-- `prompt_exemplars(prompt_name, example_json, created_at)`
+## Data Model
+- `Conversation`: id, platform, participants, messages, timestamp, metadata
+- `Memory`: id, conversation_id, content, embedding, tags, importance_score
+- `UserProfile`: id, preferences, interaction_patterns, trust_level
+- `Preference`: category, value, confidence, last_updated
 
-### Config
-- `LEARNING_ENABLED=true`
-- `LEARNING_CURATE_DAILY_HOUR=02:00`
+## Learning Loop
+1. **Capture**: Store all conversations with metadata
+2. **Process**: Extract key information and generate embeddings
+3. **Learn**: Identify patterns in user preferences and behavior
+4. **Apply**: Use learned patterns to improve future interactions
 
+## Search & Retrieval
+- **Hybrid search**: Combine semantic (embeddings) and keyword search
+- **Context window**: Retrieve relevant conversation history for context
+- **Relevance scoring**: Rank memories by recency and importance
 
+## Security & Privacy
+- **Local processing**: All embeddings generated locally
+- **No cloud egress**: Per security posture requirements
+- **User control**: Users can delete specific memories or entire history
+
+## Performance
+- **Indexing**: Full-text search indices on conversation content
+- **Embeddings**: Vector similarity search for semantic retrieval
+- **Caching**: Frequently accessed user profiles and preferences

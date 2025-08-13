@@ -19,5 +19,3 @@ Accepted
 - Add tables: `contact_relations`, `contact_enrichment`, `knowledge_sources`.
 - UI: allow quick edits/confirmations and show provenance for each attribute.
 - Privacy: stays local; export/import optional later.
-
-

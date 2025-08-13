@@ -77,7 +77,7 @@ No. Kenny is local‑first. LLM inference and embeddings are served by Ollama on
 
 ### Can I talk to Kenny outside the web UI?
 
-MVP focuses on the local Web Chat at `http://localhost:8080/chat`. Phase 2 introduces fully local iMessage two‑way chat. WhatsApp two‑way is optional and off by default; it can be local Web automation or a hybrid Business API connector if explicitly accepted.
+MVP focuses on the local Web Chat at `http://localhost:8080/chat`. Phase 2 may introduce optional two‑way chat via Telegram, iMessage, or WhatsApp (all off by default). WhatsApp can be local Web automation or a hybrid Business API connector if explicitly accepted.
 
 ### How are calendar approvals handled?
 

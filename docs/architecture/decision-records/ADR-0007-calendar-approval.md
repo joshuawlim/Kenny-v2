@@ -9,7 +9,7 @@ Calendar events can expose sensitive information (titles, attendees, locations) 
 ## Decision
 - All calendar actions (create, modify, delete) require explicit human approval from the calendar owner before the action is executed.
 - Approval requests are presented with a concise, reviewable summary (title, time window, participants, location/medium, organizer) and a clear approve/decline option.
-- The default approval conversation channel is WhatsApp when available. If unavailable, fall back to the local web chat. iMessage support will arrive in a future phase.
+- The default approval conversation channel is the local Web Chat. Optional channels (Telegram, WhatsApp, iMessage) may be enabled later; when enabled, the user can choose their preferred default.
 - The system MUST NOT auto-create or auto-modify calendar events without prior approval.
 - Approvals are recorded locally with minimal metadata sufficient for audit (what, when, result) and no third-party transmission beyond the selected approval channel.
 
@@ -23,6 +23,6 @@ Calendar events can expose sensitive information (titles, attendees, locations) 
 - macOS notifications-only: Platform-specific, less consistent with multi-channel conversational approvals.
 
 ## References
-- ADR-0018: Default conversation channel is WhatsApp for approvals
+- ADR-0018: Default conversation channel is Web Chat for approvals
 - ADR-0012: Local egress allowlist (deny-by-default, privacy-preserving)
 - docs/architecture/security-posture.md

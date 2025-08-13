@@ -47,6 +47,29 @@ Expose a minimal local HTTP API on macOS to read (and later write) data from sys
 - Event: `{ id, title, start, end, attendees[], source }`
 - MailMessage: `{ id, thread_id, from, to[], subject, ts, snippet, body? }`
 
+### Modes and Environment
+- `MAIL_BRIDGE_MODE`: `demo` (default) or `live`.
+  - `demo`: returns deterministic fake data for development.
+  - `live`: uses AppleScript/JXA to fetch from Apple Mail.
+- Default host/port: `http://localhost:5100`.
+
+### Response Shape Contract
+- `GET /v1/mail/messages` returns a JSON array of `MailMessage` objects (canonical).
+- During migration, clients may accept either an array or an object `{ messages: MailMessage[], total? }`.
+
+### Running Locally
+```bash
+# Live data
+cd bridge
+MAIL_BRIDGE_MODE=live python3 app.py
+
+# Demo data
+MAIL_BRIDGE_MODE=demo python3 app.py
+
+# Quick check
+curl "http://localhost:5100/v1/mail/messages?mailbox=Inbox&limit=3" | jq .
+```
+
 ### Dependencies
 - Python 3.11+
 - `pyobjc` bundles (`Contacts`, `EventKit`), AppleScript via `osascript` or `py-applescript`.
@@ -64,5 +87,3 @@ Expose a minimal local HTTP API on macOS to read (and later write) data from sys
 - Default lookback if `since` is omitted (computed by workers): 30 days.
 - Validate `calendar_id` against `GET /v1/calendar/list` and reject unknown ids.
  - Log structured events with request ids for correlation with API/workers.
-
-

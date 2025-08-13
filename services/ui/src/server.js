@@ -119,7 +119,7 @@ function htmlPage(body) {
     <ul id="messages"></ul>
   </div>
 
-  <p style="color:#6b7280;font-size:12px">Local-first. No cloud egress beyond allowlist. Future approvals default to WhatsApp when writes are introduced.</p>
+  <p style="color:#6b7280;font-size:12px">Local-first. No cloud egress beyond allowlist. Approvals occur in Web Chat by default; optional channels (Telegram/WhatsApp/iMessage) can be enabled later.</p>
 </body>
 </html>`;
 }
@@ -164,6 +164,10 @@ app.get('/api/messages', async (_req, res) => {
   } catch (e) {
     res.status(500).json({ error: 'api_unreachable' });
   }
+});
+
+app.get('/chat', (_req, res) => {
+  res.redirect('/');
 });
 
 app.get('/', (_req, res) => {

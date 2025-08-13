@@ -8,6 +8,20 @@ services:
     depends_on:
       - api
       - ui
+      - agent-registry
+
+  agent-registry:
+    build: ../services/agent-registry
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      - PYTHONPATH=/app/src
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   api:
     build: ../services/api
@@ -25,7 +39,8 @@ services:
       - CALENDAR_DEFAULT_CALENDAR_ID=
       - AGENT_PERSONA_NAME=Kenny
       # Optional: choose default conversation channel (Phase 2 when sending is enabled)
-      - AGENT_DEFAULT_CHANNEL=whatsapp
+      # Options: web (default), telegram, whatsapp, imessage
+      - AGENT_DEFAULT_CHANNEL=web
       # Optional: approvals via chat by default (UI surfaces approvals in chat)
       # - APPROVALS_CHAT_FIRST=true
       # Optional: embeddings/search tunables
@@ -36,51 +51,16 @@ services:
       # - SEARCH_TOPK_FINAL=20
       - IMAGE_PROCESSING_ENABLED=false
       - ATTACHMENTS_DIR=/data/attachments
+      - AGENT_REGISTRY_URL=http://agent-registry:8000
     volumes:
       - app_data:/data
       - attachments:/data/attachments
     # SQLite runs in-process; no external DB service required
     depends_on:
       - postgres
+      - agent-registry
 
-  workers:
-    build: ../services/workers
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    environment:
-      - MAC_BRIDGE_URL=http://host.docker.internal:5100
-      # Optional: local API key if Bridge enforces it
-      # - MAC_BRIDGE_API_KEY=change-me
-      - DB_URL=sqlite:////data/agent.db
-      - PG_URL=postgresql://kenny:kenny@postgres:5432/kenny
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
-      - MAIL_SYNC_MAILBOXES=Inbox,Sent
-      - MAIL_SYNC_INTERVAL_MINUTES=10
-      - MAIL_BODY_MAX_AGE_DAYS=30
-      - IMESSAGE_SYNC_LOOKBACK_DAYS=30
-      - IMESSAGE_SYNC_INTERVAL_MINUTES=10
-      - WHATSAPP_SYNC_LOOKBACK_DAYS=30
-      - WHATSAPP_SYNC_INTERVAL_MINUTES=10
-      - WHATSAPP_ENABLE_SENDING=false
-      # Optional (Phase 2): designate an agent chat thread/contact for WhatsApp
-      - WHATSAPP_AGENT_CONTACT="+61423788836" # or saved contact name
-      - WHATSAPP_AGENT_THREAD_NAME=           # for group chats
-      - LEARNING_ENABLED=false
-      - LEARNING_CURATE_DAILY_HOUR=02:00
-      - WHITELISTED_SITES=
-      - EGRESS_ALLOWLIST=http://host.docker.internal:11434,http://host.docker.internal:5100
-      - IMAGE_PROCESSING_ENABLED=false
-      - ATTACHMENTS_DIR=/data/attachments
-      # Optional: embeddings/search tunables (if workers compute embeddings)
-      # - EMBEDDINGS_MODEL=nomic-embed-text
-      # - EMBEDDINGS_DIM=768
-    volumes:
-      - app_data:/data
-      - whatsapp_profile:/data/whatsapp_profile
-      - attachments:/data/attachments
-    depends_on:
-      - api
-      - postgres
+
 
   ui:
     build: ../services/ui
@@ -90,7 +70,8 @@ services:
       - ENABLE_WEB_CHAT=true
       - AGENT_PERSONA_NAME=Kenny
       # Optional: choose default conversation channel for UI affordances
-      - AGENT_DEFAULT_CHANNEL=whatsapp
+      # Options: web (default), telegram, whatsapp, imessage
+      - AGENT_DEFAULT_CHANNEL=web
       - IMAGE_PROCESSING_ENABLED=false
   postgres:
     image: postgres:16-alpine
@@ -113,7 +94,6 @@ services:
 
 volumes:
   app_data:
-  whatsapp_profile:
   pg_data:
   attachments:
 

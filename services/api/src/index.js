@@ -26,6 +26,9 @@ function recordAudit(event) {
 app.get('/healthz', (req, res) => {
   res.json({ status: 'ok' });
 });
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
 
 // Status with components, audit, and kill switch
 app.get('/api/status', (req, res) => {

@@ -1,0 +1,759 @@
+# Kenny v2 Project Roadmap
+
+**Project**: Kenny v2 - Local-first, multi-agent personal assistant  
+**Architecture**: Coordinator-led multi-agent system with LangGraph orchestration  
+**Current Status**: Phase 0.3 COMPLETED - Base Agent Framework (Agent SDK) operational  
+**Target**: Fully operational multi-agent system with local-first privacy controls  
+
+## Roadmap Overview
+
+This roadmap breaks down the project into sequential development phases, with each phase focusing on specific agents and capabilities. Success measures and objectives are defined for each step to ensure clear completion criteria.
+
+---
+
+## Phase 0: Foundation & Infrastructure (Weeks 1-2)
+
+### 0.1 Agent Registry Service ✅ **COMPLETED**
+**Objective**: Create central service for agent registration and capability discovery
+
+**Components**:
+- Python FastAPI service for agent registration
+- Agent manifest validation using JSON Schema
+- Health check monitoring for registered agents
+- Capability routing and discovery
+
+**Success Measures**:
+- [x] Agent Registry service starts and responds to health checks
+- [x] Agent manifests can be registered and validated against schema
+- [x] Capability discovery returns accurate agent listings
+- [x] Health monitoring detects agent status changes
+- [x] All endpoints return proper HTTP status codes and error messages
+
+**Implementation Status**: 
+- ✅ Core registry logic implemented with async support
+- ✅ FastAPI application with all required endpoints
+- ✅ Pydantic V2 models with comprehensive validation
+- ✅ Docker containerization and health checks
+- ✅ Integration with existing infrastructure (docker-compose, Caddy)
+- ✅ Comprehensive test suite (21/21 tests passing)
+- ✅ Egress domain validation per ADR-0012
+- ✅ Health monitoring with configurable intervals
+
+**Files to Create**:
+```
+services/agent-registry/
+├── Dockerfile
+├── requirements.txt
+├── src/
+│   ├── main.py              # FastAPI application
+│   ├── models.py            # Pydantic models
+│   ├── registry.py          # Agent registry logic
+│   └── schemas.py           # JSON Schema validation
+└── tests/
+    └── test_registry.py
+```
+
+**API Endpoints**:
+- `POST /agents/register` - Agent registration
+- `GET /agents` - List all registered agents
+- `GET /agents/{agent_id}` - Get agent details
+- `GET /capabilities` - List all available capabilities
+- `GET /capabilities/{verb}` - Get capability details
+
+### 0.2 Coordinator Skeleton (LangGraph) ✅ **COMPLETED**
+**Objective**: Create basic coordinator service with LangGraph integration
+
+**Components**:
+- Python service with LangGraph orchestration
+- Basic routing and planning nodes
+- Agent communication framework
+- Policy engine stub
+
+**Success Measures**:
+- [x] Coordinator service starts and responds to health checks
+- [x] LangGraph nodes can be defined and executed
+- [x] Basic routing between nodes functions correctly
+- [x] Agent communication framework can send/receive messages
+- [x] Policy engine stub accepts basic rules
+
+**Implementation Status**: 
+- ✅ Core coordinator logic implemented with LangGraph integration
+- ✅ Four-node execution graph: router → planner → executor → reviewer
+- ✅ Smart intent classification for mail, calendar, and general operations
+- ✅ Policy enforcement engine with approval workflows
+- ✅ Agent communication framework for registry integration
+- ✅ FastAPI application with coordinator and policy endpoints
+- ✅ Comprehensive test suite (14/14 tests passing)
+- ✅ Docker containerization and health checks
+- ✅ Local testing script for verification
+
+**Files to Create**:
+```
+services/coordinator/
+├── Dockerfile
+├── requirements.txt
+├── src/
+│   ├── main.py              # FastAPI + LangGraph app
+│   ├── coordinator.py       # Main coordinator logic
+│   ├── nodes/
+│   │   ├── router.py        # Intent classification
+│   │   ├── planner.py       # Task planning
+│   │   ├── executor.py      # Agent execution
+│   │   └── reviewer.py      # Safety review
+│   ├── agents/
+│   │   └── agent_client.py  # Agent communication
+│   └── policy/
+│       └── engine.py        # Policy enforcement
+└── tests/
+    └── test_coordinator.py
+```
+
+### 0.3 Base Agent Framework (Agent SDK) ✅ **COMPLETED**
+**Objective**: Create foundation for all service agents
+
+**Components**:
+- Base agent class with common functionality
+- Capability handler framework
+- Tool integration patterns
+- Health check and monitoring
+
+**Success Measures**:
+- [x] Base agent class can be inherited and extended
+- [x] Capability handlers can be registered and executed
+- [x] Tool integration patterns work consistently
+- [x] Health checks return proper status information
+- [x] Agent registration with registry works correctly
+
+**Implementation Status**: 
+- ✅ Core agent framework implemented with comprehensive base classes
+- ✅ BaseAgent class with capability and tool registration
+- ✅ BaseCapabilityHandler with async execution and manifest generation
+- ✅ BaseTool class with usage tracking and parameter validation
+- ✅ Health monitoring system with status aggregation and critical failure detection
+- ✅ AgentRegistryClient for registry communication with retry logic
+- ✅ Comprehensive test suite (16/16 tests passing)
+- ✅ Package installation and distribution setup
+- ✅ Example usage script demonstrating all features
+- ✅ Installation verification script for quality assurance
+
+**Files Created**:
+```
+services/agent-sdk/
+├── setup.py                 ✅ Created
+├── requirements.txt          ✅ Created
+├── README.md                ✅ Created
+├── kenny_agent/
+│   ├── __init__.py          ✅ Created
+│   ├── base_agent.py        ✅ Created - Base agent class
+│   ├── base_handler.py      ✅ Created - Base capability handler
+│   ├── base_tool.py         ✅ Created - Base tool class
+│   ├── health.py            ✅ Created - Health check utilities
+│   └── registry.py          ✅ Created - Registration utilities
+├── tests/
+│   └── test_base_agent.py   ✅ Created - Comprehensive test suite
+├── example_usage.py         ✅ Created - Usage demonstration
+└── test_installation.py     ✅ Created - Installation verification
+```
+
+---
+
+## Phase 0: Foundation & Infrastructure - COMPLETED ✅
+
+**Status**: All Phase 0 components successfully implemented and tested  
+**Completion Date**: August 13, 2025  
+**Total Test Coverage**: 51/51 tests passing across all components  
+
+### Phase 0 Summary
+
+**Phase 0.1: Agent Registry Service** ✅ **COMPLETED**
+- **Test Results**: 21/21 tests passing
+- **Status**: Fully operational with comprehensive validation
+- **Features**: Agent registration, capability discovery, health monitoring, egress validation
+
+**Phase 0.2: Coordinator Skeleton (LangGraph)** ✅ **COMPLETED**  
+- **Test Results**: 14/14 tests passing
+- **Status**: Fully operational with LangGraph integration
+- **Features**: Four-node execution graph, policy engine, agent communication framework
+
+**Phase 0.3: Base Agent Framework (Agent SDK)** ✅ **COMPLETED**
+- **Test Results**: 16/16 tests passing  
+- **Status**: Fully operational with comprehensive framework
+- **Features**: Base classes, capability handlers, tools, health monitoring, registry client
+
+### Phase 0 Quality Metrics
+
+- **Total Test Coverage**: 51/51 tests passing (100%)
+- **Code Coverage**: 53% (Agent SDK) - reasonable for base framework
+- **Integration Testing**: All components work together correctly
+- **Package Installation**: Successfully installable from project root
+- **Documentation**: Comprehensive README and examples
+- **Docker Infrastructure**: Core services operational
+
+### Phase 0 Deliverables
+
+✅ **Agent Registry Service**: Central service for agent registration and discovery  
+✅ **Coordinator Service**: LangGraph-based orchestration with policy engine  
+✅ **Agent SDK**: Comprehensive framework for building agents  
+✅ **Testing Framework**: Automated testing for all components  
+✅ **Documentation**: Complete API documentation and usage examples  
+✅ **Infrastructure**: Docker setup with health monitoring  
+
+---
+
+## Next Phase to Implement
+
+**Phase 1.1: Mail Agent** ✅ **COMPLETED WITH PERFORMANCE OPTIMIZATIONS**
+
+**Objective**: Extract mail functionality into a dedicated agent using the new Agent SDK
+
+**Prerequisites**: ✅ COMPLETED
+- Agent Registry Service operational
+- Coordinator Service with LangGraph operational  
+- Base Agent Framework (Agent SDK) operational
+
+**Implementation Status**: 
+- ✅ Core Mail Agent implemented with comprehensive capability handlers
+- ✅ Three capability handlers: search, read, propose_reply
+- ✅ macOS Bridge integration tool for mail operations
+- ✅ FastAPI application with capability endpoints and health monitoring
+- ✅ Comprehensive test suite (19/19 tests passing)
+- ✅ Docker containerization and health checks
+- ✅ Agent manifest aligned with registry schema requirements
+- ✅ **LIVE APPLE MAIL INTEGRATION** with performance optimizations
+- ✅ All success measures achieved
+
+**Success Measures**:
+- [x] Mail agent starts and registers with agent registry
+- [x] All existing mail functionality works through agent interface
+- [x] Agent manifest declares correct capabilities and data scopes
+- [x] macOS Bridge integration functions correctly
+- [x] API service can communicate with mail agent
+- [x] **Performance optimized: first request ~44s, cached requests ~0.008s**
+
+**Acceptance Criteria (Live Data + Performance)**:
+- [x] With `MAIL_BRIDGE_MODE=live` and bridge healthy, `POST /capabilities/messages.search` returns ≥1 item from the bridge (non-mock).
+- [x] Agent routes `messages.search` via `mail_bridge` tool; no mock data paths in runtime.
+- [x] Bridge URL is configurable via `MAC_BRIDGE_URL` (default `http://localhost:5100`).
+- [x] Bridge `GET /v1/mail/messages` returns a list of `MailMessage` objects with caching.
+- [x] **Performance: first request ~44s (JXA), cached requests ~0.008s (2min TTL)**.
+- [x] E2E smoke test can start bridge (live), start agent, and verify non-mock results.
+
+**Performance Optimizations Implemented**:
+- ✅ **HTTP Connectivity Fixed**: JXA execution made async with thread executor
+- ✅ **Response Caching**: 120s TTL for live mail data at bridge level
+- ✅ **Timeout Management**: 60s JXA timeout, 65s HTTP read timeout
+- ✅ **Fallback System**: HTTP → curl → direct import (all working)
+
+**Test Checklist**:
+1. Start bridge: `MAIL_BRIDGE_MODE=live python3 bridge/app.py`.
+2. Start agent: `python3 -m uvicorn services/mail-agent/src.main:app --port 8000`.
+3. Verify bridge: `curl http://localhost:5100/v1/mail/messages?mailbox=Inbox&limit=3` returns real items.
+4. Verify agent: `curl -X POST http://localhost:8000/capabilities/messages.search -H 'Content-Type: application/json' -d '{"input": {"mailbox": "Inbox", "limit": 3}}'` returns the same live items.
+5. **Performance test**: Second request should be instant (<1s) due to caching.
+
+**Phase 1.1 Alignment Tasks (COMPLETED)**:
+- [x] Align SDK manifest generation with registry schema (map `parameters_schema` → `input_schema`, `returns_schema` → `output_schema`; include `data_scopes`, `tool_access`, `egress_domains`, `health_check`).
+- [x] Update SDK Registry client to send `AgentRegistration` shape: `{ manifest, health_endpoint }`.
+- [x] Normalize registry `/capabilities` response or coordinator client filtering so discovery returns usable entries for a specific agent.
+- [x] Configure Caddy or registry allowlist so Mail Agent can reach Bridge via an allowed local domain (`kenny.local`).
+
+---
+
+## Next Phase to Implement
+
+**Phase 1.2: Contacts Agent** *(Ready to begin - Mail Agent complete)*
+
+**Objective**: Create agent for contact management and enrichment
+
+**Prerequisites**: ✅ COMPLETED
+- Agent Registry Service operational
+- Coordinator Service with LangGraph operational  
+- Base Agent Framework (Agent SDK) operational
+- Mail Agent operational (Phase 1.1)
+
+**Success Measures**:
+- [ ] Contacts agent starts and registers with agent registry
+- [ ] Contact resolution can find and disambiguate contacts
+- [ ] Contact enrichment adds additional information
+- [ ] Contact merging handles duplicate resolution
+- [ ] Local contacts database integration works correctly
+- [ ] All capabilities return properly structured data
+
+**Capabilities to Implement**:
+- `contacts.resolve` - Find and disambiguate contacts
+- `contacts.enrich` - Add additional contact information
+- `contacts.merge` - Merge duplicate contacts
+
+### 1.2.1 Contacts Agent Integration Tasks
+**Objective**: Integrate the completed Contacts Agent with the broader system and implement local SQLite database management
+
+**Current Status**: ✅ Contacts Agent fully implemented and tested (25/25 tests passing)
+
+**Integration Tasks**:
+- [ ] **Local Database Implementation**
+  - [ ] Design and implement SQLite3 database schema
+  - [ ] Create database in `~/Library/Application Support/Kenny/contacts.db`
+  - [ ] Implement database migration and initialization scripts
+  - [ ] Add backup functionality (weekly RPO, 1 backup)
+
+- [ ] **Mac Contacts Integration**
+  - [ ] Implement Apple Contacts framework access
+  - [ ] Create ongoing sync mechanism with Mac Contacts.app
+  - [ ] Handle incremental sync and conflict resolution
+  - [ ] Implement soft deletion (no hard deletion without approval)
+
+- [ ] **Message Analysis & Enrichment**
+  - [ ] Integrate with iMessage and WhatsApp message content
+  - [ ] Implement LLM-powered content analysis for contact enrichment
+  - [ ] Extract occupations, interests, relationships, family members
+  - [ ] Store enrichment data with confidence scores and sources
+
+- [ ] **Coordinator Service Integration**
+  - [ ] Test agent discovery through coordinator routing
+  - [ ] Verify capability execution via coordinator orchestration
+  - [ ] Implement human approval workflow for contact modifications
+  - [ ] Test cross-agent communication patterns
+
+- [ ] **New Person Detection**
+  - [ ] Implement detection of new persons in messages
+  - [ ] Create duplicate suggestion system with fuzzy matching
+  - [ ] Implement human approval workflow via Coordinator
+  - [ ] Handle contact creation after approval
+
+- [ ] **Production Deployment**
+  - [ ] Configure production environment variables
+  - [ ] Set up monitoring and alerting
+  - [ ] Implement logging and audit trails
+  - [ ] Performance testing and optimization
+
+**Success Measures**:
+- [ ] Local SQLite database operational with proper schema
+- [ ] Mac Contacts sync working with conflict resolution
+- [ ] Message analysis extracting meaningful contact information
+- [ ] Human approval workflow functioning via Coordinator
+- [ ] New person detection and duplicate suggestion working
+- [ ] Performance meets production requirements
+
+**Estimated Effort**: 4-5 weeks for full implementation
+
+### 1.3 Memory/RAG Agent
+**Objective**: Create agent for memory and retrieval operations
+
+**Current Implementation**: Data model exists, no service implementation
+
+**Success Measures**:
+- [ ] Memory agent starts and registers with agent registry
+- [ ] Embedding generation works with local Ollama models
+- [ ] Memory storage and retrieval functions correctly
+- [ ] Semantic search returns relevant results
+- [ ] Cross-platform memory aggregation works
+- [ ] Retention policies are enforced correctly
+
+**Capabilities to Implement**:
+- `memory.retrieve` - Semantic search across stored data
+- `memory.embed` - Generate embeddings for text
+- `memory.store` - Store new memories with metadata
+
+---
+
+## Phase 2: Coordinator Implementation (Weeks 5-6)
+
+### 2.1 Routing and Planning
+**Objective**: Implement intelligent request routing and task planning
+
+**Components**:
+- Intent classification using LLM
+- Capability mapping and discovery
+- Task DAG generation
+- Plan optimization and validation
+
+**Success Measures**:
+- [ ] Intent classification correctly identifies user requests
+- [ ] Capability mapping finds appropriate agents for tasks
+- [ ] Task DAG generation creates valid execution plans
+- [ ] Plan optimization improves execution efficiency
+- [ ] Plan validation catches invalid configurations
+- [ ] Fallback handling works for unknown intents
+
+**Implementation**:
+- Router node with intent classification
+- Planner node with task decomposition
+- Plan validation and optimization
+- Fallback handling for unknown intents
+
+### 2.2 Execution Engine
+**Objective**: Implement reliable agent execution with error handling
+
+**Components**:
+- Agent execution orchestration
+- Error handling and retry logic
+- Circuit breakers and timeouts
+- Result aggregation and validation
+
+**Success Measures**:
+- [ ] Agent execution follows planned DAG correctly
+- [ ] Error handling recovers from agent failures
+- [ ] Retry logic works for transient failures
+- [ ] Circuit breakers prevent cascading failures
+- [ ] Timeouts are enforced correctly
+- [ ] Result aggregation combines agent outputs properly
+
+**Implementation**:
+- Executor node with agent communication
+- Error handling and recovery
+- Result validation and aggregation
+- Performance monitoring and metrics
+
+### 2.3 Policy Engine
+**Objective**: Implement approval workflows and policy enforcement
+
+**Components**:
+- Approval rule engine
+- Egress allowlist enforcement
+- Data access controls
+- Audit logging and compliance
+
+**Success Measures**:
+- [ ] Approval rules are enforced correctly
+- [ ] Egress allowlist blocks unauthorized network access
+- [ ] Data access controls limit agent permissions
+- [ ] Audit logging captures all operations
+- [ ] Policy violations are detected and blocked
+- [ ] Approval workflows function end-to-end
+
+**Implementation**:
+- Policy rule definitions
+- Approval workflow management
+- Access control enforcement
+- Comprehensive audit logging
+
+---
+
+## Phase 3: Communication & Integration Agents (Weeks 7-8)
+
+### 3.1 WhatsApp Agent
+**Objective**: Create agent for WhatsApp integration with read-only capabilities
+
+**Current Implementation**: ADR-0019 defines local image understanding requirements
+
+**Success Measures**:
+- [ ] WhatsApp agent starts and registers with agent registry
+- [ ] Chat history can be searched and retrieved
+- [ ] Reply proposals are generated correctly
+- [ ] Local image understanding works (OCR/vision models)
+- [ ] No network egress occurs (local-only operation)
+- [ ] Agent respects read-only constraints
+
+**Capabilities to Implement**:
+- `chats.search` - Search chat history by contact and keywords
+- `chats.propose_reply` - Generate reply suggestions
+- `chats.read` - Read chat messages and media
+
+### 3.2 iMessage Agent
+**Objective**: Create agent for iMessage integration
+
+**Current Implementation**: macOS Bridge integration available
+
+**Success Measures**:
+- [ ] iMessage agent starts and registers with agent registry
+- [ ] Message reading and searching works correctly
+- [ ] Reply proposals are generated appropriately
+- [ ] macOS Bridge integration functions properly
+- [ ] Read operations work without approval
+- [ ] Write operations require explicit approval
+
+**Capabilities to Implement**:
+- `messages.read` - Read iMessage content
+- `messages.search` - Search message history
+- `messages.propose_reply` - Generate reply suggestions
+
+### 3.3 Calendar Agent
+**Objective**: Create agent for Apple Calendar integration
+
+**Current Implementation**: No current implementation
+
+**Success Measures**:
+- [ ] Calendar agent starts and registers with agent registry
+- [ ] Event proposals can be created and presented
+- [ ] Calendar writes require explicit approval
+- [ ] Apple Calendar integration works correctly
+- [ ] Event constraints and scheduling logic functions
+- [ ] Approval workflows integrate with Web Chat
+
+**Capabilities to Implement**:
+- `calendar.propose_event` - Create event proposals
+- `calendar.write_event` - Create approved events
+- `calendar.read` - Read calendar data
+
+---
+
+## Phase 4: Observability & Safety (Weeks 9-10)
+
+### 4.1 Comprehensive Tracing
+**Objective**: Implement end-to-end request tracing
+
+**Components**:
+- Request tracing across coordinator and agents
+- Performance metrics collection
+- Error tracking and debugging
+- Audit trail generation
+
+**Success Measures**:
+- [ ] Request tracing covers coordinator and all agents
+- [ ] Performance metrics are collected accurately
+- [ ] Error tracking provides debugging information
+- [ ] Audit trails capture all operations
+- [ ] Tracing data is searchable and filterable
+- [ ] Performance impact of tracing is minimal
+
+**Implementation**:
+- Distributed tracing with correlation IDs
+- Performance metrics collection
+- Error aggregation and reporting
+- Debug information collection
+
+### 4.2 Health Monitoring
+**Objective**: Implement comprehensive system health monitoring
+
+**Components**:
+- Agent health status monitoring
+- System performance metrics
+- Alert generation and notification
+- Health dashboard integration
+
+**Success Measures**:
+- [ ] Agent health status is monitored continuously
+- [ ] System performance metrics are collected
+- [ ] Alerts are generated for critical issues
+- [ ] Health dashboard displays current status
+- [ ] Health checks are lightweight and reliable
+- [ ] Historical health data is preserved
+
+**Implementation**:
+- Health check aggregation
+- Performance metrics collection
+- Alert rule engine
+- Dashboard integration
+
+### 4.3 Security & Privacy Controls
+**Objective**: Implement comprehensive security and privacy controls
+
+**Components**:
+- Egress allowlist enforcement
+- Data access controls
+- Privacy-preserving operations
+- Security audit logging
+
+**Success Measures**:
+- [ ] Egress allowlist blocks unauthorized network access
+- [ ] Data access controls limit agent permissions
+- [ ] Privacy-preserving operations work correctly
+- [ ] Security audit logging captures all security events
+- [ ] No data leaks occur during normal operation
+- [ ] Security controls are tested and validated
+
+---
+
+## Phase 5: Extensibility & Testing (Weeks 11-12)
+
+### 5.1 Agent SDK
+**Objective**: Provide comprehensive SDK for new agent development
+
+**Components**:
+- Agent development templates
+- Testing frameworks and utilities
+- Deployment and packaging tools
+- Documentation and examples
+
+**Success Measures**:
+- [ ] SDK package can be installed and imported
+- [ ] Agent templates create working agents
+- [ ] Testing utilities support comprehensive testing
+- [ ] Deployment tools work correctly
+- [ ] Documentation is clear and complete
+- [ ] Example agents demonstrate best practices
+
+**Implementation**:
+- SDK package with templates
+- Testing utilities and frameworks
+- Deployment automation
+- Comprehensive documentation
+
+### 5.2 Conformance Testing
+**Objective**: Ensure all agents follow system contracts
+
+**Components**:
+- Capability conformance testing
+- Policy enforcement verification
+- Performance and reliability testing
+- Security and privacy testing
+
+**Success Measures**:
+- [ ] All agents pass conformance tests
+- [ ] Policy enforcement is verified correctly
+- [ ] Performance benchmarks are established
+- [ ] Security testing framework works
+- [ ] Test coverage is comprehensive
+- [ ] Automated testing runs successfully
+
+**Implementation**:
+- Automated conformance tests
+- Policy enforcement verification
+- Performance benchmarking
+- Security testing framework
+
+### 5.3 Integration Testing
+**Objective**: Verify end-to-end system functionality
+
+**Components**:
+- Complete workflow testing
+- Cross-agent communication testing
+- Error handling and recovery testing
+- Performance and load testing
+
+**Success Measures**:
+- [ ] Complete workflows function end-to-end
+- [ ] Cross-agent communication works reliably
+- [ ] Error handling and recovery functions correctly
+- [ ] Performance meets or exceeds requirements
+- [ ] System handles load gracefully
+- [ ] All integration points are tested
+
+---
+
+## Phase 6: Production Readiness (Weeks 13-14)
+
+### 6.1 Performance Optimization
+**Objective**: Optimize system performance and resource usage
+
+**Components**:
+- Performance profiling and analysis
+- Resource usage optimization
+- Caching and optimization strategies
+- Load testing and capacity planning
+
+**Success Measures**:
+- [ ] Response times meet performance targets
+- [ ] Resource usage is optimized
+- [ ] Caching improves performance
+- [ ] System handles expected load
+- [ ] Performance is consistent and predictable
+- [ ] Optimization metrics are measurable
+
+### 6.2 Documentation & Training
+**Objective**: Complete comprehensive documentation and training materials
+
+**Components**:
+- User documentation
+- Developer documentation
+- Operations documentation
+- Training materials and examples
+
+**Success Measures**:
+- [ ] User documentation is complete and clear
+- [ ] Developer documentation covers all aspects
+- [ ] Operations documentation is comprehensive
+- [ ] Training materials are effective
+- [ ] Documentation is kept current
+- [ ] Examples demonstrate best practices
+
+### 6.3 Deployment & Operations
+**Objective**: Establish production deployment and operations procedures
+
+**Components**:
+- Production deployment procedures
+- Monitoring and alerting setup
+- Backup and recovery procedures
+- Incident response procedures
+
+**Success Measures**:
+- [ ] Production deployment is automated and reliable
+- [ ] Monitoring and alerting work correctly
+- [ ] Backup and recovery procedures are tested
+- [ ] Incident response procedures are documented
+- [ ] Operations team is trained and ready
+- [ ] System is production-ready
+
+---
+
+## Success Criteria Summary
+
+### Technical Metrics
+- **Response Time**: Maintain or improve current performance (< 2 seconds for simple queries)
+- **Reliability**: 99.9% uptime with graceful degradation
+- **Extensibility**: New agents can be added in < 1 week
+- **Observability**: All operations are traceable and debuggable
+
+### User Experience Metrics
+- **Approval Workflow**: Calendar and message approvals complete in < 30 seconds
+- **Privacy Control**: Zero data leaks, all operations respect user preferences
+- **System Transparency**: Users can see and understand all system operations
+- **Error Handling**: Clear error messages and recovery options
+
+### Operational Metrics
+- **Debugging**: Issues can be diagnosed in < 15 minutes
+- **Monitoring**: System health is visible in real-time
+- **Maintenance**: System updates can be completed in < 1 hour
+- **Deployment**: New versions can be deployed in < 30 minutes
+
+---
+
+## Risk Mitigation
+
+### Technical Risks
+- **Performance Degradation**: Comprehensive performance testing and monitoring
+- **Integration Complexity**: Incremental migration with rollback capability
+- **Data Loss**: Comprehensive backup and validation procedures
+- **Security Vulnerabilities**: Security testing and code review
+
+### Operational Risks
+- **Service Disruption**: Parallel operation during migration
+- **User Experience**: Continuous monitoring and user feedback
+- **Team Learning**: Comprehensive documentation and training
+- **Timeline Slippage**: Phased approach with clear milestones
+
+---
+
+## Next Steps
+
+### Immediate Actions (This Week)
+1. **Review and Approve**: Get stakeholder approval for this roadmap
+2. **Resource Allocation**: Assign team members to implementation phases
+3. **Environment Setup**: Prepare development and testing environments
+4. **Dependency Installation**: Install required tools and frameworks
+
+### Week 1-2 Goals
+1. **Agent Registry**: ✅ COMPLETED - Agent registry service operational
+2. **Coordinator Skeleton**: ✅ COMPLETED - Coordinator service with LangGraph operational
+3. **Base Framework**: ✅ COMPLETED - Base agent framework (Agent SDK) operational
+4. **Testing**: ✅ COMPLETED - Testing framework established with comprehensive coverage
+
+### Success Metrics by Phase
+- **Week 2**: ✅ **MILESTONE ACHIEVED** - All Phase 0 components operational
+  - ✅ Agent registry operational (21/21 tests)
+  - ✅ Coordinator service operational (14/14 tests)  
+  - ✅ Base agent framework operational (16/16 tests)
+- **Week 4**: Mail agent extracted and operational
+- **Week 6**: Basic coordinator functionality operational
+- **Week 8**: Communication agents operational
+- **Week 10**: Comprehensive observability implemented
+- **Week 12**: Full multi-agent system operational with SDK
+- **Week 14**: Production-ready system with complete documentation
+
+### Phase 0 Milestone Achievement 🎉
+
+**Foundation Complete**: All Phase 0 components are now operational and tested  
+**Ready for Phase 1**: Agent development can begin using the established framework  
+**Quality Assured**: 51/51 tests passing with comprehensive integration testing  
+**Documentation Complete**: Full API documentation and usage examples available
+
+---
+
+## Notes
+
+- **Local-First**: All operations default to local processing
+- **Network Egress**: Strictly controlled via allowlist per ADR-0012
+- **Approval Workflows**: Calendar actions require explicit human approval via Web Chat
+- **Privacy**: All data processing occurs locally with user control
+- **Extensibility**: New agents can be added without coordinator changes
+- **Testing**: Each phase includes comprehensive testing before proceeding to next phase

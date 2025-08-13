@@ -1,8 +1,7 @@
 # Working Agreement for Kenny Personas
 
 - Scope: Local-first operation. Any network egress must follow the allowlist per ADR.
-- Approvals: Calendar actions require explicit human approval. Propose but do not create events without approval. WhatsApp is the default approvals channel when available.
-- Persona etiquette: Prefix every message with the role name (e.g., "Architect:").
-- Process: plan → design → implement → test. Invite VoC input at the start and before implementation proceeds.
+- Approvals: Calendar actions require explicit human approval. Propose but do not create events without approval. Web Chat is the default approvals channel; Telegram/WhatsApp/iMessage are optional future channels.
+- Process: plan → design → implement → test.
 - Alignment: Follow `docs/architecture/decision-records/` and `docs/architecture/security-posture.md`.
 - Implementation: Prefer minimal, precise edits; maintain readability; prepare atomic commits with clear motivation; avoid broad refactors.

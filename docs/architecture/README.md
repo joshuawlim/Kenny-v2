@@ -1,4 +1,4 @@
-## Architecture
+# Architecture
 
 This directory centralizes design knowledge and decisions for Kenny v2. It follows a pragmatic, documentation-as-code approach.
 
@@ -9,13 +9,16 @@ This directory centralizes design knowledge and decisions for Kenny v2. It follo
 - `decision-records/`: Architecture Decision Records (ADRs)
 - `templates/`: ADR and Module Spec templates
 - `diagrams/`: C4-style diagrams (Mermaid)
- - `data-model.md`: Tables and schemas for MVP
- - `module-specs/etl-mail.md`: Mail ETL design (Inbox & Sent)
- - `module-specs/memory-learning.md`: Memory and learning loop
- - `module-specs/web-whitelist-access.md`: Whitelisted website access
- - `module-specs/contacts-knowledge.md`: Contacts knowledge base
- - `module-specs/dashboard.md`: Observability dashboard
- - `module-specs/search-and-embeddings.md`: Local embeddings and hybrid search
+- `data-model.md`: Tables and schemas for MVP
+- `module-specs/`: Module specifications
+  - `multi-agent-architecture.md`: Coordinator-led multi-agent spec
+  - `implementation-plan.md`: Migration plan to multi-agent system
+  - `etl-mail.md`: Mail ETL design (Inbox & Sent) - **IMPLEMENTED**
+  - `memory-learning.md`: Memory and learning loop - **PLANNED**
+  - `web-whitelist-access.md`: Whitelisted website access - **PLANNED**
+  - `contacts-knowledge.md`: Contacts knowledge base - **PLANNED**
+  - `dashboard.md`: Observability dashboard - **PLANNED**
+  - `search-and-embeddings.md`: Local embeddings and hybrid search - **PLANNED**
 
 ### Process
 1. Capture significant decisions as ADRs.
@@ -33,5 +36,3 @@ This directory centralizes design knowledge and decisions for Kenny v2. It follo
 - Diagrams are Mermaid `.mmd` files.
 - Reference files and modules using backticks and repository-relative paths.
 - Prefer clear, high-verbosity prose with precise terminology.
-
-

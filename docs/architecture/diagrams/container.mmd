@@ -1,32 +1,60 @@
-%% Container diagram for Kenny v2
+%% Container diagram for Kenny v2 (Coordinator-led multi-agent)
 flowchart TB
   User((User))
 
   subgraph LocalHost[Local Machine]
-    WebUI[Web Chat UI]
-    Engine[Agent Engine]
-    ETL[ETL Pipelines (Mail/WhatsApp/iMessage)]
-    KB[Contacts Knowledge Base]
-    Search[Search & Embeddings]
-    Memory[Memory Learning]
-    Dashboard[Observability Dashboard]
+    WebUI[Web Chat UI (Default)]
+    subgraph Control[Coordinator & Control Plane]
+      Coordinator[Coordinator (LangGraph)]
+      Registry[Agent Registry]
+      Policy[Policy Engine]
+      Reviewer[Reviewer/Verifier]
+      Tracing[Tracing/Logs]
+    end
+    subgraph Agents[Service Agents]
+      MailAgent[Mail Agent]
+      MsgAgent[iMessage Agent]
+      WAAgent[WhatsApp Agent]
+      CalAgent[Calendar Agent]
+      ContactsAgent[Contacts Agent]
+      MemoryAgent[Memory/RAG Agent]
+      WebAgent[Web Agent]
+      ObsAgent[Observability Agent]
+    end
+    Bridge[macOS Bridge]
+    Ollama[Ollama (LLM/Embeddings)]
   end
 
   %% External Services (egress controlled by allowlist per ADR-0012)
-  WhatsApp[WhatsApp]
+  WhatsApp[WhatsApp Web]
   AppleMail[Apple Mail]
   iMessage[iMessage]
   Calendar[Apple Calendar]
 
   User --> WebUI
-  WebUI --> Engine
-  Engine --> ETL
-  Engine --> Search
-  Engine --> Memory
-  Engine --> KB
-  Engine --> Dashboard
+  WebUI --> Coordinator
+  Coordinator --> Registry
+  Coordinator --> Policy
+  Coordinator --> Reviewer
+  Coordinator --> Tracing
 
-  ETL --- WhatsApp
-  ETL --- AppleMail
-  ETL --- iMessage
-  Engine --- Calendar
+  Coordinator --> MailAgent
+  Coordinator --> MsgAgent
+  Coordinator --> WAAgent
+  Coordinator --> CalAgent
+  Coordinator --> ContactsAgent
+  Coordinator --> MemoryAgent
+  Coordinator --> WebAgent
+  Coordinator --> ObsAgent
+
+  Coordinator --- Ollama
+  MailAgent --- Bridge
+  MsgAgent --- Bridge
+  CalAgent --- Bridge
+  ContactsAgent --- Bridge
+  MemoryAgent --- Ollama
+
+  WAAgent --- WhatsApp
+  Bridge --- AppleMail
+  Bridge --- iMessage
+  Bridge --- Calendar

@@ -1,54 +1,32 @@
-## Module Spec: Mail ETL (Inbox & Sent)
+# Mail ETL Module Specification
 
-### Purpose
-Synchronize Apple Mail messages (Inbox and Sent) into the unified `messages` table, read-only.
+## Overview
+Mail ETL module handles ingestion of Apple Mail data (Inbox & Sent folders) with read-only access and 30-day scan window enforcement.
 
-### Scope (MVP)
-- Mailboxes: Inbox, Sent
-- Fields: id, thread id, from, to/cc, subject, date, snippet
-- Body: fetched lazily on demand for recent messages; not fetched by default
+## Design Decisions
+- **Read-only access**: Per ADR-0004, only read operations on Apple Mail
+- **Scope limitation**: Inbox and Sent folders only (ADR-0005)
+- **Time window**: 30-day scan window enforced (ADR-0006)
+- **Local processing**: No cloud egress; data processed locally
 
-### Flow
-1) Scheduler (every 10 minutes) triggers per-mailbox sync jobs.
-2) For each mailbox, call macOS Bridge:
-   - `GET /v1/mail/messages?mailbox=Inbox&since=ISO8601&limit=500`
-   - Iterate with pagination until no more results.
-3) Map to `messages` rows:
-   - `platform='mail'`
-   - `external_id` ← Mail-provided id (or Message-ID header if available)
-   - `thread_external_id` ← conversation/thread id if available
-   - `mailbox` ← 'Inbox' or 'Sent'
-   - `sender_id` ← email address (string) for now; later map to `contacts`
-   - `recipient_ids` ← emails array (JSON string)
-   - `subject`, `content_snippet`, `ts`, `is_outgoing`
-   - `source_app='Apple Mail'`
-4) Upsert strategy:
-   - Insert if `(platform, external_id)` not present
-   - Else update mutable fields (snippet, subject, thread id) and `updated_at`
-5) Store progress:
-   - Update `sync_state` with `source='mail:Inbox'` or `mail:Sent'` and last message timestamp
+## Interface
+```python
+class MailETL:
+    def sync_inbox_sent(self) -> SyncResult
+    def get_messages(self, folder: str, limit: int = 100) -> List[Message]
+    def enforce_scan_window(self, messages: List[Message]) -> List[Message]
+```
 
-### On-demand body fetch
-- API: `GET /v1/mail/messages/body?id=MAIL_ID`
-- Worker fetches and stores in `messages.content_body` only when required for NLP tasks, respecting a max age window (e.g., 30 days).
+## Data Model
+- `Message`: id, subject, sender, recipient, body, timestamp, folder, read_status
+- `SyncResult`: count, timestamp, status, error_details
 
-### Error handling
-- Backoff on Bridge errors, retry with jitter.
-- Detect permission errors and surface actionable logs.
-- Paginate to avoid large AppleScript calls (100–200 items per page).
+## Error Handling
+- Graceful degradation when Mail.app unavailable
+- Retry logic with exponential backoff
+- Audit logging for sync operations
 
-### Configuration
-- `MAIL_SYNC_MAILBOXES=Inbox,Sent`
-- `MAIL_SYNC_INTERVAL_MINUTES=10`
-- `MAIL_BODY_MAX_AGE_DAYS=30`
-
-### Metrics (optional)
-- `mail_sync_messages_fetched{mailbox}`
-- `mail_sync_upserts{mailbox}`
-- `mail_sync_errors{mailbox}`
- - `mail_sync_cycle_seconds{mailbox}`
-
-### Health
-- Expose a worker `/health` that includes last successful sync timestamp per mailbox.
-
-
+## Security
+- No persistent storage of mail credentials
+- Local-only processing per security posture
+- Audit trail for all sync operations

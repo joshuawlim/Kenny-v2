@@ -1,4 +1,4 @@
-## Security Posture
+# Security Posture
 
 This document defines the baseline security principles and controls for Kenny v2.
 
@@ -24,7 +24,7 @@ This document defines the baseline security principles and controls for Kenny v2
 
 ### Approvals and UX
 - Calendar and similar sensitive actions require explicit user approval (ADR-0007).
-- Default approval channel is WhatsApp; fallback to local web chat (ADR-0018).
+- Default approval channel is the local Web Chat (ADR-0018). Optional channels (Telegram, WhatsApp, iMessage) are opt-in and disabled by default.
 
 ### Logging and Observability
 - Collect minimal necessary logs and metrics locally. Avoid sending logs off-device unless explicitly allowlisted.
@@ -37,4 +37,4 @@ This document defines the baseline security principles and controls for Kenny v2
 ### References
 - ADR-0012: Deny-by-default network egress with explicit allowlist
 - ADR-0007: Require explicit human approval for calendar actions
-- ADR-0018: Default conversation channel for approvals is WhatsApp
+- ADR-0018: Default conversation channel for approvals is Web Chat

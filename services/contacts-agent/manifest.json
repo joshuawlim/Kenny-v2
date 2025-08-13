@@ -1,0 +1,121 @@
+{
+  "agent_id": "contacts-agent",
+  "version": "1.0.0",
+  "display_name": "Contacts Agent",
+  "description": "Contact management and enrichment with deduplication",
+  "capabilities": [
+    {
+      "verb": "contacts.resolve",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "identifier": {"type": "string", "description": "Email, phone, or name to resolve"},
+          "platform": {"type": "string", "enum": ["mail", "whatsapp", "imessage", "calendar"], "description": "Platform context for resolution"},
+          "fuzzy_match": {"type": "boolean", "default": true, "description": "Enable fuzzy name matching"}
+        },
+        "required": ["identifier"],
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "contacts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {"type": "string"},
+                "name": {"type": "string"},
+                "emails": {"type": "array", "items": {"type": "string"}},
+                "phones": {"type": "array", "items": {"type": "string"}},
+                "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                "platforms": {"type": "array", "items": {"type": "string"}}
+              },
+              "required": ["id", "name", "confidence"]
+            }
+          },
+          "resolved_count": {"type": "integer"}
+        },
+        "required": ["contacts", "resolved_count"],
+        "additionalProperties": false
+      },
+      "safety_annotations": ["read-only", "local-only", "no-egress"],
+      "description": "Resolve contacts by identifier with fuzzy matching"
+    },
+    {
+      "verb": "contacts.enrich",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "contact_id": {"type": "string", "description": "Contact ID to enrich"},
+          "enrichment_type": {"type": "string", "enum": ["job_title", "interests", "relationships", "interaction_history"], "description": "Type of enrichment to perform"},
+          "source_platform": {"type": "string", "enum": ["mail", "whatsapp", "imessage", "calendar"], "description": "Platform providing enrichment data"}
+        },
+        "required": ["contact_id", "enrichment_type"],
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "contact_id": {"type": "string"},
+          "enrichments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {"type": "string"},
+                "value": {"type": "string"},
+                "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                "source": {"type": "string"},
+                "timestamp": {"type": "string", "format": "date-time"}
+              },
+              "required": ["type", "value", "confidence", "source"]
+            }
+          },
+          "enrichment_count": {"type": "integer"}
+        },
+        "required": ["contact_id", "enrichments", "enrichment_count"],
+        "additionalProperties": false
+      },
+      "safety_annotations": ["read-only", "local-only", "no-egress"],
+      "description": "Enrich contact information from various sources"
+    },
+    {
+      "verb": "contacts.merge",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "primary_contact_id": {"type": "string", "description": "Primary contact to keep"},
+          "duplicate_contact_ids": {"type": "array", "items": {"type": "string"}, "description": "Duplicate contacts to merge"},
+          "merge_strategy": {"type": "string", "enum": ["merge_all", "selective", "manual"], "default": "merge_all", "description": "How to handle conflicts"}
+        },
+        "required": ["primary_contact_id", "duplicate_contact_ids"],
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "merged_contact_id": {"type": "string"},
+          "merged_attributes": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "merged_count": {"type": "integer"},
+          "conflicts_resolved": {"type": "integer"}
+        },
+        "required": ["merged_contact_id", "merged_count"],
+        "additionalProperties": false
+      },
+      "safety_annotations": ["read-write", "local-only", "no-egress"],
+      "description": "Merge duplicate contacts with conflict resolution"
+    }
+  ],
+  "data_scopes": ["contacts:all", "mail:inbox", "mail:sent", "whatsapp:chats", "imessage:chats", "calendar:events"],
+  "tool_access": ["macos-bridge", "sqlite-db", "ollama"],
+  "egress_domains": [],
+  "health_check": {
+    "endpoint": "/health",
+    "interval_seconds": 60,
+    "timeout_seconds": 10
+  }
+}

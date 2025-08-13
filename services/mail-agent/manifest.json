@@ -1,0 +1,107 @@
+{
+  "agent_id": "mail-agent",
+  "version": "1.0.0",
+  "display_name": "Mail Agent",
+  "description": "Read-only mail search/read and reply proposals",
+  "capabilities": [
+    {
+      "verb": "messages.search",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {"type": "string"},
+          "from": {"type": "string"},
+          "to": {"type": "string"},
+          "mailbox": {"type": "string", "enum": ["Inbox", "Sent"]},
+          "since": {"type": "string", "format": "date-time"},
+          "until": {"type": "string", "format": "date-time"},
+          "limit": {"type": "integer", "minimum": 1, "maximum": 500}
+        },
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {"type": "string"},
+                "thread_id": {"type": ["string", "null"]},
+                "from": {"type": ["string", "null"]},
+                "to": {"type": "array", "items": {"type": "string"}},
+                "subject": {"type": ["string", "null"]},
+                "snippet": {"type": ["string", "null"]},
+                "ts": {"type": "string", "format": "date-time"},
+                "mailbox": {"type": ["string", "null"]}
+              },
+              "required": ["id", "ts"]
+            }
+          },
+          "count": {"type": "integer"}
+        },
+        "required": ["results", "count"],
+        "additionalProperties": false
+      },
+      "safety_annotations": ["read-only", "local-only", "no-egress"],
+      "description": "Search mail messages by query and filters"
+    },
+    {
+      "verb": "messages.read",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string"}
+        },
+        "required": ["id"],
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string"},
+          "headers": {"type": "object", "additionalProperties": true},
+          "body_text": {"type": ["string", "null"]},
+          "body_html": {"type": ["string", "null"]}
+        },
+        "required": ["id"],
+        "additionalProperties": true
+      },
+      "safety_annotations": ["read-only", "local-only", "no-egress"],
+      "description": "Read full message content by ID"
+    },
+    {
+      "verb": "messages.propose_reply",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string"},
+          "context": {"type": "string"}
+        },
+        "required": ["id"],
+        "additionalProperties": false
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "suggestions": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        },
+        "required": ["suggestions"]
+      },
+      "safety_annotations": ["read-only", "local-only", "no-egress"],
+      "description": "Generate reply suggestions for a message"
+    }
+  ],
+  "data_scopes": ["mail:inbox", "mail:sent"],
+  "tool_access": ["macos-bridge", "sqlite-db", "ollama"],
+  "egress_domains": [],
+  "health_check": {
+    "endpoint": "/health",
+    "interval_seconds": 60,
+    "timeout_seconds": 10
+  }
+}
