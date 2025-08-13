@@ -1,0 +1,1 @@
+"""Memory Agent service for the Kenny v2 multi-agent system."""
