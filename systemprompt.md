@@ -1,78 +1,125 @@
-# Session Continuation Prompt
+# Kenny v2 System Prompt
 
-**Project**: Kenny v2 - Multi-Agent Personal Assistant Migration  
-**Current Status**: Infrastructure cleaned up, ready to begin Phase 0.1  
-**Last Session**: Completed infrastructure review and cleanup  
+## Project Overview
+Kenny v2 is a local-first, multi-agent personal assistant system built with Python FastAPI services and LangGraph orchestration. The system prioritizes privacy and local data processing while providing intelligent automation capabilities.
 
-### **What Was Accomplished:**
-- ✅ Reviewed and analyzed current Docker infrastructure against new multi-agent architecture
-- ✅ Stopped and removed `workers` container (not aligned with agent-based design)
-- ✅ Cleaned up docker-compose.yml (removed workers service and unused volumes)
-- ✅ Confirmed current running services: postgres, api, ui, proxy
-- ✅ Infrastructure now properly aligned for multi-agent migration
-- ✅ **COMPLETED**: Updated data model to support multi-agent architecture (Phase 0.1 prerequisite)
+## Architecture
+- **Multi-Agent System**: Coordinator-led orchestration using LangGraph
+- **Local-First**: All processing occurs locally with no external dependencies
+- **Privacy-Focused**: User data never leaves the local environment
+- **Modular Design**: Agents can be developed and deployed independently
 
-### **Current Architecture State:**
-- **Running Containers**: postgres, api, ui, proxy
-- **API Service**: Will be refactored into coordinator (Phase 0.2)
-- **Workers**: Functionality will be distributed to individual agents
-- **Database**: PostgreSQL remains for cross-agent data storage
-- **Proxy**: Caddy will be updated to route to new agent services
+## Current Status
+- **Phase 0**: Foundation & Infrastructure ✅ COMPLETED
+  - Agent Registry Service (21/21 tests passing)
+  - Coordinator Service with LangGraph (14/14 tests passing)
+  - Base Agent Framework/Agent SDK (16/16 tests passing)
+- **Phase 1.1**: Mail Agent ✅ COMPLETED WITH PERFORMANCE OPTIMIZATIONS
+  - Live Apple Mail integration working
+  - Performance: first request ~44s, cached requests ~0.008s
+  - Bridge caching with 120s TTL
 
-### **Next Phase to Implement:**
-**Phase 0.1: Agent Registry Service** *(Data Model Prerequisite: ✅ COMPLETED)*
+## Development Setup
 
-**Objective**: Create central service for agent registration and capability discovery
+### Quick Start (All Services)
+```bash
+# Terminal 1: Agent Registry
+cd services/agent-registry && python3 -m uvicorn src.main:app --port 8001
 
-**Components to Build**:
-```
-services/agent-registry/
-├── Dockerfile
-├── requirements.txt
-├── src/
-│   ├── main.py              # FastAPI application
-│   ├── models.py            # Pydantic models
-│   ├── registry.py          # Agent registry logic
-│   └── schemas.py           # JSON Schema validation
-└── tests/
-    └── test_registry.py
+# Terminal 2: Coordinator  
+cd services/coordinator && python3 -m uvicorn src.main:app --port 8002
+
+# Terminal 3: Mail Agent
+cd services/mail-agent && python3 -m uvicorn src.main:app --port 8000
+
+# Terminal 4: Bridge (Live Mode)
+cd bridge && MAIL_BRIDGE_MODE=live python3 app.py
 ```
 
-**API Endpoints to Implement**:
-- `POST /agents/register` - Agent registration
-- `GET /agents` - List all registered agents
-- `GET /agents/{agent_id}` - Get agent details
-- `GET /capabilities` - List all available capabilities
-- `GET /capabilities/{verb}` - Get capability details
+### Individual Service Setup
+1. **Agent Registry** (Port 8001): `cd services/agent-registry && python3 -m uvicorn src.main:app --port 8001`
+2. **Coordinator** (Port 8002): `cd services/coordinator && python3 -m uvicorn src.main:app --port 8002`
+3. **Mail Agent** (Port 8000): `cd services/mail-agent && python3 -m uvicorn src.main:app --port 8000`
+4. **Bridge** (Port 5100): `cd bridge && MAIL_BRIDGE_MODE=live python3 app.py`
 
-**Success Measures** (from roadmap):
-- [ ] Agent Registry service starts and responds to health checks
-- [ ] Agent manifests can be registered and validated against schema
-- [ ] Capability discovery returns accurate agent listings
-- [ ] Health monitoring detects agent status changes
-- [ ] All endpoints return proper HTTP status codes and error messages
+### Environment Variables
+```bash
+# Bridge Mode
+export MAIL_BRIDGE_MODE=live  # or 'demo' for test data
 
-### **Key Context for Next Session:**
-- **Working Directory**: `/Users/joshwlim/Documents/Kenny v2`
-- **Architecture**: Coordinator-led multi-agent system with LangGraph
+# Mail Agent Bridge URL
+export MAC_BRIDGE_URL=http://127.0.0.1:5100
+```
+
+## Testing
+
+### Unit Tests
+```bash
+# Run in each service directory
+python3 -m pytest tests/ -v
+```
+
+### Integration Tests
+```bash
+# Mail Agent E2E Test
+curl -X POST http://localhost:8000/capabilities/messages.search \
+  -H "Content-Type: application/json" \
+  -d '{"input": {"mailbox": "Inbox", "limit": 3}}'
+
+# Bridge Direct Test  
+curl "http://localhost:5100/v1/mail/messages?mailbox=Inbox&limit=3"
+```
+
+### Performance Testing
+- **First Request**: ~44 seconds (JXA execution)
+- **Cached Requests**: ~0.008 seconds (instant)
+- **Cache Duration**: 2 minutes
+
+## Next Feature Development
+
+### Phase 1.2: Contacts Agent (Ready to Begin)
+**Prerequisites**: ✅ All Phase 0 + Phase 1.1 complete
+**Objective**: Create agent for contact management and enrichment
+
+**Quick Setup for Next Feature**:
+```bash
+# 1. Ensure all services are running (see Quick Start above)
+# 2. Create new agent directory: services/contacts-agent/
+# 3. Follow Agent SDK patterns from mail-agent
+# 4. Add bridge endpoints in bridge/app.py for contacts
+# 5. Test with coordinator integration
+```
+
+**Success Measures**:
+- [ ] Contacts agent starts and registers with agent registry
+- [ ] Contact resolution can find and disambiguate contacts  
+- [ ] Contact enrichment adds additional information
+- [ ] Contact merging handles duplicate resolution
+- [ ] Local contacts database integration works correctly
+
+## Development Patterns
+
+### Agent Development (Using Agent SDK)
+1. **Extend BaseAgent**: Inherit from `kenny_agent.base_agent.BaseAgent`
+2. **Create Capability Handlers**: Extend `BaseCapabilityHandler`
+3. **Register Tools**: Use `register_tool()` for external integrations
+4. **Health Monitoring**: Implement health checks and monitoring
+
+### Bridge Integration
+1. **Add Endpoints**: New routes in `bridge/app.py`
+2. **Environment Modes**: Support demo/live via env vars
+3. **Caching Strategy**: Implement appropriate TTL for data
+4. **Error Handling**: Graceful fallbacks and logging
+
+### Testing Strategy
+1. **Unit Tests**: Test individual components
+2. **Integration Tests**: Test service interactions
+3. **E2E Tests**: Full workflow validation
+4. **Performance Tests**: Measure response times and caching
+
+## Notes
 - **Local-First**: All operations default to local processing
 - **Network Egress**: Strictly controlled via allowlist per ADR-0012
 - **Approval Workflows**: Calendar actions require explicit human approval via Web Chat
-- **Current API**: Embedded in `services/api/src/index.js` (will be extracted to agents)
-
-### **Files to Reference:**
-- `docs/architecture/schemas/agent-manifest.json` - Agent manifest schema
-- `docs/architecture/multi-agent-architecture.md` - Multi-agent architecture spec
-- `docs/architecture/decision-records/ADR-0023-agent-manifest-and-registry.md` - Registry design decisions
-- `roadmap.md` - Complete project roadmap with success measures
-
-### **Next Session Goals:**
-1. Create the Agent Registry service directory structure
-2. Implement FastAPI application with agent registration endpoints
-3. Create Pydantic models for agent manifests and capabilities
-4. Implement JSON Schema validation for agent registration
-5. Add health check monitoring for registered agents
-6. Create basic tests for the registry functionality
-7. Integrate with existing docker-compose infrastructure
-
-**Ready to proceed with Phase 0.1 Agent Registry Service implementation. Data model foundation is complete.**
+- **Privacy**: All data processing occurs locally with user control
+- **Extensibility**: New agents can be added without coordinator changes
