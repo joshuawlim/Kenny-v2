@@ -1,22 +1,23 @@
+import os
 from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional
 
-app = FastAPI(title="Kenny Bridge Stub", version="0.1.0")
+app = FastAPI(title="Kenny Bridge", version="0.2.0")
+
+# Bridge mode: "demo" (default) or "live"
+BRIDGE_MODE = os.getenv("MAIL_BRIDGE_MODE", "demo").strip().lower()
 
 
 class MailMessage(BaseModel):
     id: str
     thread_id: Optional[str] = None
-    from_: str
+    from_: str = Field(alias="from")
     to: List[str] = []
     subject: Optional[str] = None
     ts: str
     snippet: Optional[str] = None
-
-    class Config:
-        fields = {"from_": "from"}
 
 
 @app.get("/health")
@@ -31,7 +32,17 @@ def mail_messages(
     limit: int = Query(100, ge=1, le=500),
     page: int = Query(0, ge=0),
 ):
-    # Generate deterministic fake data for demo
+    # Live mode: fetch from Apple Mail via AppleScript
+    if BRIDGE_MODE == "live":
+        try:
+            from mail_live import fetch_mail_messages
+
+            return fetch_mail_messages(mailbox=mailbox, since_iso=since, limit=limit, page=page)
+        except Exception as live_err:
+            # Fall back to demo data on error
+            print(f"[bridge] live fetch failed, falling back to demo: {live_err}")
+
+    # Demo mode: generate deterministic fake data
     try:
         since_dt = datetime.fromisoformat((since or "").replace("Z", "+00:00"))
         if since_dt.tzinfo is None:
@@ -58,5 +69,10 @@ def mail_messages(
             }
         )
     return items
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=5100)
 
 

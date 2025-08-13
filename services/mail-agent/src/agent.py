@@ -30,17 +30,27 @@ class MailAgent(BaseAgent):
             health_check={"endpoint": "/health", "interval_seconds": 60, "timeout_seconds": 10}
         )
         
+        print(f"Initializing Mail Agent with ID: {self.agent_id}")
+        
         # Register capabilities
+        print("Registering capabilities...")
         self.register_capability(SearchCapabilityHandler())
         self.register_capability(ReadCapabilityHandler())
         self.register_capability(ProposeReplyCapabilityHandler())
         
+        print(f"Registered capabilities: {list(self.capabilities.keys())}")
+        
         # Register tools
-        bridge_url = os.getenv("MAC_BRIDGE_URL", "http://kenny.local/bridge")
+        bridge_url = os.getenv("MAC_BRIDGE_URL", "http://localhost:5100")
+        print(f"Registering mail bridge tool with URL: {bridge_url}")
         self.register_tool(MailBridgeTool(bridge_url))
+        
+        print(f"Registered tools: {list(self.tools.keys())}")
         
         # Set up health monitoring
         self.setup_health_monitoring()
+        
+        print("Mail Agent initialization complete!")
     
     def setup_health_monitoring(self):
         """Set up health checks for the agent."""

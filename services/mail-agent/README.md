@@ -121,7 +121,26 @@ The Mail Agent requires access to:
 
 ### Environment Variables
 
-- `MAC_BRIDGE_URL` - URL for the macOS Bridge service (default: `http://kenny.local/bridge`)
+- `MAC_BRIDGE_URL` - URL for the macOS Bridge service (default: `http://localhost:5100`)
+
+### Live Data E2E Check
+
+1. Start the bridge in live mode:
+```bash
+cd bridge
+MAIL_BRIDGE_MODE=live python3 app.py
+```
+2. Start the mail agent:
+```bash
+cd services/mail-agent
+python3 -m uvicorn src.main:app --host 0.0.0.0 --port 8000
+```
+3. Verify via agent (expect non-mock results):
+```bash
+curl -s -X POST http://localhost:8000/capabilities/messages.search \
+  -H "Content-Type: application/json" \
+  -d '{"input": {"mailbox": "Inbox", "limit": 3}}' | jq .
+```
 
 ### Health Check
 

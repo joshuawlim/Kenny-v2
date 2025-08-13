@@ -12,7 +12,7 @@ from kenny_agent.base_tool import BaseTool
 class MailBridgeTool(BaseTool):
     """Tool for interacting with macOS Bridge mail endpoints."""
     
-    def __init__(self, bridge_url: str = "http://kenny.local/bridge"):
+    def __init__(self, bridge_url: str = "http://localhost:5100"):
         """
         Initialize the mail bridge tool.
         
@@ -36,7 +36,11 @@ class MailBridgeTool(BaseTool):
                 "required": ["operation"]
             }
         )
-        self.bridge_url = bridge_url.rstrip('/')
+        # Normalize common legacy suffix '/bridge'
+        norm = bridge_url.rstrip('/')
+        if norm.endswith('/bridge'):
+            norm = norm[:-len('/bridge')]
+        self.bridge_url = norm
     
     def execute(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -62,7 +66,7 @@ class MailBridgeTool(BaseTool):
         mailbox = parameters.get("mailbox", "Inbox")
         since = parameters.get("since")
         limit = parameters.get("limit", 100)
-        page = parameters.get("page", 1)
+        page = parameters.get("page", 0)
         
         # Build query parameters
         query_params = {
@@ -74,32 +78,106 @@ class MailBridgeTool(BaseTool):
             query_params["since"] = since
         
         try:
-            with httpx.Client() as client:
-                response = client.get(
-                    f"{self.bridge_url}/v1/mail/messages",
-                    params=query_params,
-                    timeout=30.0
-                )
+            url = f"{self.bridge_url}/v1/mail/messages"
+            print(f"[mail_bridge] GET {url} params={query_params}")
+            # Disable env proxy settings to ensure direct localhost access
+            with httpx.Client(trust_env=False, http2=False, timeout=httpx.Timeout(connect=3.0, read=10.0, write=10.0, pool=5.0)) as client:
+                response = client.get(url, params=query_params, headers={"Connection": "close"}, follow_redirects=False)
                 response.raise_for_status()
                 
                 data = response.json()
+                # Accept either {messages: [...]} or a raw list
+                if isinstance(data, list):
+                    messages = data
+                    total = len(messages)
+                else:
+                    messages = data.get("messages", [])
+                    total = data.get("total", len(messages))
                 return {
                     "operation": "list",
                     "mailbox": mailbox,
-                    "results": data.get("messages", []),
-                    "count": len(data.get("messages", [])),
-                    "total": data.get("total", 0),
+                    "results": messages,
+                    "count": len(messages),
+                    "total": total,
                     "page": page,
                     "limit": limit
                 }
                 
         except httpx.RequestError as e:
+            print(f"[mail_bridge] RequestError type={type(e)} detail={e}")
+            # Fallback: shell out to curl (works reliably on this host)
+            try:
+                import json as _json
+                import shlex, subprocess as _sp
+                fallback_base = self.bridge_url.replace('127.0.0.1', 'localhost')
+                url = f"{fallback_base}/v1/mail/messages?mailbox={mailbox}&limit={limit}&page={page}"
+                cmd = ["curl", "-sS", "--max-time", "8", url]
+                print(f"[mail_bridge] fallback curl: {' '.join(shlex.quote(c) for c in cmd)}")
+                res = _sp.run(cmd, stdout=_sp.PIPE, stderr=_sp.PIPE, text=True)
+                if res.returncode == 0 and res.stdout.strip():
+                    data = _json.loads(res.stdout)
+                    messages = data if isinstance(data, list) else data.get("messages", [])
+                    return {
+                        "operation": "list",
+                        "mailbox": mailbox,
+                        "results": messages,
+                        "count": len(messages),
+                        "total": len(messages),
+                        "page": page,
+                        "limit": limit,
+                        "_fallback": "curl"
+                    }
+                else:
+                    print(f"[mail_bridge] fallback curl failed rc={res.returncode} err={res.stderr.strip()}")
+            except Exception as fe:
+                print(f"[mail_bridge] fallback error: {fe}")
+
+            # Final fallback: direct local call to bridge mail_live (no HTTP)
+            try:
+                import os as _os, sys as _sys
+                here = _os.path.abspath(_os.path.dirname(__file__))
+                candidates = []
+                # Walk up to project root heuristically and test for bridge/mail_live.py
+                cursor = here
+                for _ in range(8):
+                    bridge_dir = _os.path.join(cursor, 'bridge')
+                    if _os.path.exists(_os.path.join(bridge_dir, 'mail_live.py')):
+                        candidates.append(bridge_dir)
+                        break
+                    cursor = _os.path.abspath(_os.path.join(cursor, '..'))
+                # Also try known relative from services/mail-agent/src/tools → project root
+                candidates.append(_os.path.abspath(_os.path.join(here, '..', '..', '..', '..', '..', 'bridge')))
+                found = None
+                for c in candidates:
+                    if _os.path.exists(_os.path.join(c, 'mail_live.py')):
+                        found = c
+                        break
+                if not found:
+                    raise RuntimeError('bridge/mail_live.py not found via heuristic search')
+                if found not in _sys.path:
+                    _sys.path.insert(0, found)
+                from mail_live import fetch_mail_messages as _fetch
+                print("[mail_bridge] direct import fallback: bridge.mail_live.fetch_mail_messages")
+                messages = _fetch(mailbox=mailbox, since_iso=since, limit=limit, page=page)
+                return {
+                    "operation": "list",
+                    "mailbox": mailbox,
+                    "results": messages,
+                    "count": len(messages),
+                    "total": len(messages),
+                    "page": page,
+                    "limit": limit,
+                    "_fallback": "direct"
+                }
+            except Exception as de:
+                print(f"[mail_bridge] direct import fallback failed: {de}")
             return {
                 "operation": "list",
                 "error": f"Request failed: {str(e)}",
                 "mailbox": mailbox
             }
         except httpx.HTTPStatusError as e:
+            print(f"[mail_bridge] HTTPStatusError code={e.response.status_code} body={e.response.text}")
             return {
                 "operation": "list",
                 "error": f"HTTP error {e.response.status_code}: {e.response.text}",

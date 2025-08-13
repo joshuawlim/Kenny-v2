@@ -229,6 +229,19 @@ services/agent-sdk/
 - [x] API service can communicate with mail agent
 - [x] Performance matches or exceeds current implementation
 
+**Acceptance Criteria (Updated for Live Data)**:
+- [x] With `MAIL_BRIDGE_MODE=live` and bridge healthy, `POST /capabilities/messages.search` returns ≥1 item from the bridge (non-mock).
+- [x] Agent routes `messages.search` via `mail_bridge` tool; no mock data paths in runtime.
+- [x] Bridge URL is configurable via `MAC_BRIDGE_URL` (default `http://localhost:5100`).
+- [x] Bridge `GET /v1/mail/messages` returns a list of `MailMessage` objects; agent tolerates `{ messages: [] }` during transition.
+- [x] E2E smoke test can start bridge (live), start agent, and verify non-mock results.
+
+**Test Checklist**:
+1. Start bridge: `MAIL_BRIDGE_MODE=live python3 bridge/app.py`.
+2. Start agent: `python3 -m uvicorn services/mail-agent/src.main:app --port 8000`.
+3. Verify bridge: `curl http://localhost:5100/v1/mail/messages?mailbox=Inbox&limit=3` returns real items.
+4. Verify agent: `curl -X POST http://localhost:8000/capabilities/messages.search -H 'Content-Type: application/json' -d '{"input": {"mailbox": "Inbox", "limit": 3}}'` returns the same live items.
+
 **Phase 1.1 Alignment Tasks (COMPLETED)**:
 - [x] Align SDK manifest generation with registry schema (map `parameters_schema` → `input_schema`, `returns_schema` → `output_schema`; include `data_scopes`, `tool_access`, `egress_domains`, `health_check`).
 - [x] Update SDK Registry client to send `AgentRegistration` shape: `{ manifest, health_endpoint }`.

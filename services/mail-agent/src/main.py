@@ -80,17 +80,44 @@ async def execute_capability(verb: str, request: CapabilityRequest):
     Returns:
         The capability execution result
     """
-    # Find the capability handler by verb
+    # Short-circuit routing for live integration using the bridge tool
+    if verb == "messages.search":
+        params = {
+            "operation": "list",
+            "mailbox": request.input.get("mailbox", "Inbox"),
+            "since": request.input.get("since"),
+            "limit": request.input.get("limit", 100),
+            "page": request.input.get("page", 0),
+        }
+        tool_result = mail_agent.execute_tool("mail_bridge", params)
+        # Surface tool errors directly for debugging
+        if isinstance(tool_result, dict) and tool_result.get("error"):
+            error_detail = tool_result.get("error")
+            print(f"[mail-agent] mail_bridge error: {error_detail}")
+            raise HTTPException(status_code=502, detail=f"mail_bridge error: {error_detail}")
+        output = {
+            "results": tool_result.get("results", []),
+            "count": tool_result.get("count", len(tool_result.get("results", []))),
+        }
+        return CapabilityResponse(output=output)
+
+    # Debug: Print what we're looking for and what we have
+    print(f"Looking for capability: '{verb}'")
+    print(f"Available capabilities: {list(mail_agent.capabilities.keys())}")
+    
+    # Find the capability handler by full capability name
     capability_handler = None
-    for handler in mail_agent.capabilities.values():
-        if hasattr(handler, 'verb') and handler.verb == verb:
+    for capability_name, handler in mail_agent.capabilities.items():
+        print(f"Checking capability: '{capability_name}' against '{verb}'")
+        if capability_name == verb:
             capability_handler = handler
+            print(f"Found handler: {handler}")
             break
     
     if not capability_handler:
         raise HTTPException(
             status_code=404,
-            detail=f"Capability '{verb}' not found"
+            detail=f"Capability '{verb}' not found. Available: {list(mail_agent.capabilities.keys())}"
         )
     
     try:
