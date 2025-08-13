@@ -80,8 +80,8 @@ class MailBridgeTool(BaseTool):
         try:
             url = f"{self.bridge_url}/v1/mail/messages"
             print(f"[mail_bridge] GET {url} params={query_params}")
-            # Disable env proxy settings to ensure direct localhost access
-            with httpx.Client(trust_env=False, http2=False, timeout=httpx.Timeout(connect=3.0, read=10.0, write=10.0, pool=5.0)) as client:
+            # Disable env proxy settings; allow longer read timeout for slow JXA
+            with httpx.Client(trust_env=False, http2=False, timeout=httpx.Timeout(connect=2.0, read=65.0, write=5.0, pool=3.0)) as client:
                 response = client.get(url, params=query_params, headers={"Connection": "close"}, follow_redirects=False)
                 response.raise_for_status()
                 
