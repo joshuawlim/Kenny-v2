@@ -11,12 +11,24 @@ Scope focuses on unifying messages across iMessage, WhatsApp, and Apple Mail, pl
 - `phones` TEXT NOT NULL (JSON array)
 - `emails` TEXT NOT NULL (JSON array)
 - `job_title` TEXT NULL
+- `company` TEXT NULL
+- `occupation` TEXT NULL
 - `interests` TEXT NULL (JSON array of strings)
+- `family_members` TEXT NULL (JSON array of relationship objects)
+- `events` TEXT NULL (JSON array of event references)
+- `notes` TEXT NULL
 - `source_app` TEXT NOT NULL (e.g., "Contacts.framework")
+- `created_at` TEXT NOT NULL (ISO8601)
 - `updated_at` TEXT NOT NULL (ISO8601)
+- `last_synced` TEXT NULL (ISO8601 timestamp of last Mac Contacts sync)
+- `is_deleted` INTEGER NOT NULL DEFAULT 0 (soft delete flag)
 
 Indexes:
 - `idx_contacts_name` on (`name`)
+- `idx_contacts_external_id` on (`external_id`)
+- `idx_contacts_emails` on (`emails`) -- JSON array index
+- `idx_contacts_phones` on (`phones`) -- JSON array index
+- `idx_contacts_last_synced` on (`last_synced`)
 
 ### messages
 Represents messages from multiple platforms, including email as a message type.
@@ -98,6 +110,64 @@ Stores agent capability registrations with the Agent Registry.
 
 Indexes:
 - `idx_agent_manifests_status` on (`status`)
+
+### contact_relationships
+Stores relationships between contacts and additional context.
+
+- `id` TEXT PRIMARY KEY (UUIDv7)
+- `contact_id` TEXT NOT NULL REFERENCES contacts(id)
+- `related_contact_id` TEXT NULL REFERENCES contacts(id) (NULL for external relationships)
+- `relationship_type` TEXT NOT NULL (e.g., 'family', 'friend', 'colleague', 'acquaintance')
+- `relationship_details` TEXT NULL (JSON object with additional context)
+- `strength` REAL NULL (relationship strength score 0.0-1.0)
+- `source_platform` TEXT NOT NULL (e.g., 'imessage', 'whatsapp', 'mail', 'calendar')
+- `source_message_id` INTEGER NULL REFERENCES messages(id)
+- `confidence` REAL NOT NULL (confidence score 0.0-1.0)
+- `created_at` TEXT NOT NULL (ISO8601)
+- `updated_at` TEXT NOT NULL (ISO8601)
+
+Indexes:
+- `idx_contact_relationships_contact_id` on (`contact_id`)
+- `idx_contact_relationships_type` on (`relationship_type`)
+- `idx_contact_relationships_source` on (`source_platform`)
+
+### contact_enrichments
+Stores enriched contact information extracted from messages and other sources.
+
+- `id` TEXT PRIMARY KEY (UUIDv7)
+- `contact_id` TEXT NOT NULL REFERENCES contacts(id)
+- `enrichment_type` TEXT NOT NULL (e.g., 'occupation', 'interest', 'event', 'location', 'preference')
+- `enrichment_value` TEXT NOT NULL
+- `source_platform` TEXT NOT NULL (e.g., 'imessage', 'whatsapp', 'mail', 'calendar')
+- `source_message_id` INTEGER NULL REFERENCES messages(id)
+- `confidence` REAL NOT NULL (confidence score 0.0-1.0)
+- `extraction_method` TEXT NULL (e.g., 'llm_analysis', 'pattern_matching', 'user_confirmation')
+- `created_at` TEXT NOT NULL (ISO8601)
+- `updated_at` TEXT NOT NULL (ISO8601)
+
+Indexes:
+- `idx_contact_enrichments_contact_id` on (`contact_id`)
+- `idx_contact_enrichments_type` on (`enrichment_type`)
+- `idx_contact_enrichments_source` on (`source_platform`)
+
+### contact_sync_log
+Tracks synchronization operations with Mac Contacts.
+
+- `id` TEXT PRIMARY KEY (UUIDv7)
+- `sync_type` TEXT NOT NULL (e.g., 'full_sync', 'incremental', 'contact_update', 'contact_delete')
+- `contacts_processed` INTEGER NOT NULL DEFAULT 0
+- `contacts_added` INTEGER NOT NULL DEFAULT 0
+- `contacts_updated` INTEGER NOT NULL DEFAULT 0
+- `contacts_deleted` INTEGER NOT NULL DEFAULT 0
+- `sync_started_at` TEXT NOT NULL (ISO8601)
+- `sync_completed_at` TEXT NULL (ISO8601)
+- `status` TEXT NOT NULL (e.g., 'running', 'completed', 'failed', 'partial')
+- `error_message` TEXT NULL
+- `created_at` TEXT NOT NULL (ISO8601)
+
+Indexes:
+- `idx_contact_sync_log_status` on (`status`)
+- `idx_contact_sync_log_started` on (`sync_started_at`)
 - `idx_agent_manifests_heartbeat` on (`last_heartbeat`)
 
 ### agent_capabilities

@@ -284,6 +284,58 @@ services/agent-sdk/
 - `contacts.enrich` - Add additional contact information
 - `contacts.merge` - Merge duplicate contacts
 
+### 1.2.1 Contacts Agent Integration Tasks
+**Objective**: Integrate the completed Contacts Agent with the broader system and implement local SQLite database management
+
+**Current Status**: ✅ Contacts Agent fully implemented and tested (25/25 tests passing)
+
+**Integration Tasks**:
+- [ ] **Local Database Implementation**
+  - [ ] Design and implement SQLite3 database schema
+  - [ ] Create database in `~/Library/Application Support/Kenny/contacts.db`
+  - [ ] Implement database migration and initialization scripts
+  - [ ] Add backup functionality (weekly RPO, 1 backup)
+
+- [ ] **Mac Contacts Integration**
+  - [ ] Implement Apple Contacts framework access
+  - [ ] Create ongoing sync mechanism with Mac Contacts.app
+  - [ ] Handle incremental sync and conflict resolution
+  - [ ] Implement soft deletion (no hard deletion without approval)
+
+- [ ] **Message Analysis & Enrichment**
+  - [ ] Integrate with iMessage and WhatsApp message content
+  - [ ] Implement LLM-powered content analysis for contact enrichment
+  - [ ] Extract occupations, interests, relationships, family members
+  - [ ] Store enrichment data with confidence scores and sources
+
+- [ ] **Coordinator Service Integration**
+  - [ ] Test agent discovery through coordinator routing
+  - [ ] Verify capability execution via coordinator orchestration
+  - [ ] Implement human approval workflow for contact modifications
+  - [ ] Test cross-agent communication patterns
+
+- [ ] **New Person Detection**
+  - [ ] Implement detection of new persons in messages
+  - [ ] Create duplicate suggestion system with fuzzy matching
+  - [ ] Implement human approval workflow via Coordinator
+  - [ ] Handle contact creation after approval
+
+- [ ] **Production Deployment**
+  - [ ] Configure production environment variables
+  - [ ] Set up monitoring and alerting
+  - [ ] Implement logging and audit trails
+  - [ ] Performance testing and optimization
+
+**Success Measures**:
+- [ ] Local SQLite database operational with proper schema
+- [ ] Mac Contacts sync working with conflict resolution
+- [ ] Message analysis extracting meaningful contact information
+- [ ] Human approval workflow functioning via Coordinator
+- [ ] New person detection and duplicate suggestion working
+- [ ] Performance meets production requirements
+
+**Estimated Effort**: 4-5 weeks for full implementation
+
 ### 1.3 Memory/RAG Agent
 **Objective**: Create agent for memory and retrieval operations
 

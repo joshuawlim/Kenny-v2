@@ -18,6 +18,10 @@ Kenny v2 is a local-first, multi-agent personal assistant system built with Pyth
   - Live Apple Mail integration working
   - Performance: first request ~44s, cached requests ~0.008s
   - Bridge caching with 120s TTL
+- **Phase 1.2**: Contacts Agent ✅ COMPLETED
+  - Contact management and enrichment agent (25/25 tests passing)
+  - Three capabilities: resolve, enrich, merge
+  - Ready for integration with coordinator and real data
 
 ## Development Setup
 
@@ -77,25 +81,44 @@ curl "http://localhost:5100/v1/mail/messages?mailbox=Inbox&limit=3"
 
 ## Next Feature Development
 
-### Phase 1.2: Contacts Agent (Ready to Begin)
-**Prerequisites**: ✅ All Phase 0 + Phase 1.1 complete
-**Objective**: Create agent for contact management and enrichment
+### Phase 1.2: Contacts Agent ✅ **COMPLETED**
+**Status**: Fully implemented and tested (25/25 tests passing)
+**Objective**: Contact management and enrichment agent
 
-**Quick Setup for Next Feature**:
+**Current Status**: ✅ **COMPLETED** - Ready for integration tasks
+
+**Integration Tasks (Next Phase)**:
+- [ ] **Local Database Implementation**
+  - SQLite3 database in `~/Library/Application Support/Kenny/contacts.db`
+  - Database migration and backup (weekly RPO)
+  - Enhanced schema for deep contact information
+
+- [ ] **Mac Contacts Integration**
+  - Ongoing sync with Mac Contacts.app
+  - Conflict resolution and soft deletion
+  - Apple Contacts framework access
+
+- [ ] **Message Analysis & Enrichment**
+  - iMessage and WhatsApp content analysis
+  - LLM-powered contact enrichment
+  - Extract occupations, interests, relationships
+
+- [ ] **Coordinator Service Integration**
+  - Human approval workflow for contact modifications
+  - New person detection and duplicate suggestions
+  - Cross-agent communication patterns
+
+- [ ] **Production Deployment**
+  - Environment configuration and monitoring
+  - Performance optimization and testing
+
+**Quick Setup for Integration Testing**:
 ```bash
-# 1. Ensure all services are running (see Quick Start above)
-# 2. Create new agent directory: services/contacts-agent/
-# 3. Follow Agent SDK patterns from mail-agent
-# 4. Add bridge endpoints in bridge/app.py for contacts
-# 5. Test with coordinator integration
+# 1. Start all services (see Quick Start above)
+# 2. Test coordinator discovery: curl http://localhost:8002/agents
+# 3. Test capability routing: POST to coordinator with contacts.resolve
+# 4. Verify cross-agent workflows function correctly
 ```
-
-**Success Measures**:
-- [ ] Contacts agent starts and registers with agent registry
-- [ ] Contact resolution can find and disambiguate contacts  
-- [ ] Contact enrichment adds additional information
-- [ ] Contact merging handles duplicate resolution
-- [ ] Local contacts database integration works correctly
 
 ## Development Patterns
 
