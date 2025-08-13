@@ -2,7 +2,7 @@
 
 **Project**: Kenny v2 - Local-first, multi-agent personal assistant  
 **Architecture**: Coordinator-led multi-agent system with LangGraph orchestration  
-**Current Status**: Phase 0.1 COMPLETED - Agent Registry Service operational  
+**Current Status**: Phase 0.2 COMPLETED - Coordinator Service with LangGraph operational  
 **Target**: Fully operational multi-agent system with local-first privacy controls  
 
 ## Roadmap Overview
@@ -60,7 +60,7 @@ services/agent-registry/
 - `GET /capabilities` - List all available capabilities
 - `GET /capabilities/{verb}` - Get capability details
 
-### 0.2 Coordinator Skeleton (LangGraph)
+### 0.2 Coordinator Skeleton (LangGraph) ✅ **COMPLETED**
 **Objective**: Create basic coordinator service with LangGraph integration
 
 **Components**:
@@ -70,11 +70,22 @@ services/agent-registry/
 - Policy engine stub
 
 **Success Measures**:
-- [ ] Coordinator service starts and responds to health checks
-- [ ] LangGraph nodes can be defined and executed
-- [ ] Basic routing between nodes functions correctly
-- [ ] Agent communication framework can send/receive messages
-- [ ] Policy engine stub accepts basic rules
+- [x] Coordinator service starts and responds to health checks
+- [x] LangGraph nodes can be defined and executed
+- [x] Basic routing between nodes functions correctly
+- [x] Agent communication framework can send/receive messages
+- [x] Policy engine stub accepts basic rules
+
+**Implementation Status**: 
+- ✅ Core coordinator logic implemented with LangGraph integration
+- ✅ Four-node execution graph: router → planner → executor → reviewer
+- ✅ Smart intent classification for mail, calendar, and general operations
+- ✅ Policy enforcement engine with approval workflows
+- ✅ Agent communication framework for registry integration
+- ✅ FastAPI application with coordinator and policy endpoints
+- ✅ Comprehensive test suite (14/14 tests passing)
+- ✅ Docker containerization and health checks
+- ✅ Local testing script for verification
 
 **Files to Create**:
 ```
@@ -575,12 +586,12 @@ services/mail-agent/
 
 ### Week 1-2 Goals
 1. **Agent Registry**: ✅ COMPLETED - Agent registry service operational
-2. **Coordinator Skeleton**: 🔄 NEXT - Create basic coordinator with LangGraph
-3. **Base Framework**: 🔄 PENDING - Implement base agent framework
+2. **Coordinator Skeleton**: ✅ COMPLETED - Coordinator service with LangGraph operational
+3. **Base Framework**: 🔄 NEXT - Implement base agent framework (Agent SDK)
 4. **Testing**: ✅ COMPLETED - Testing framework established with comprehensive coverage
 
 ### Success Metrics by Phase
-- **Week 2**: ✅ Agent registry operational, 🔄 Coordinator skeleton in progress
+- **Week 2**: ✅ Agent registry operational, ✅ Coordinator service operational
 - **Week 4**: Mail agent extracted and operational
 - **Week 6**: Basic coordinator functionality operational
 - **Week 8**: Communication agents operational
