@@ -211,7 +211,56 @@ services/agent-sdk/
 - Coordinator Service with LangGraph operational  
 - Base Agent Framework (Agent SDK) operational
 
+### Phase 1.1 Integration Contracts with Phase 0
+
+- **Agent Registry (contract)**:
+  - Agent registers with a manifest that conforms to `docs/architecture/schemas/agent-manifest.json` and includes `health_endpoint` per registry `AgentRegistration`.
+  - Note: Current Agent SDK manifest field names differ (`parameters_schema`/`returns_schema`) from registry schema (`input_schema`/`output_schema`). Add an SDK adapter or update SDK generation in Phase 1.1 before registration.
+  - Minimal example manifest for Mail Agent:
+
+    ```json
+    {
+      "agent_id": "mail-agent",
+      "version": "1.0.0",
+      "display_name": "Mail Agent",
+      "description": "Read-only mail search/read and reply proposals",
+      "capabilities": [
+        {
+          "verb": "messages.search",
+          "input_schema": {"type": "object"},
+          "output_schema": {"type": "object"},
+          "safety_annotations": ["read-only", "local-only", "no-egress"]
+        },
+        {
+          "verb": "messages.read",
+          "input_schema": {"type": "object"},
+          "output_schema": {"type": "object"},
+          "safety_annotations": ["read-only", "local-only", "no-egress"]
+        },
+        {
+          "verb": "messages.propose_reply",
+          "input_schema": {"type": "object"},
+          "output_schema": {"type": "object"},
+          "safety_annotations": ["read-only", "local-only", "no-egress"]
+        }
+      ],
+      "data_scopes": ["mail:inbox", "mail:sent"],
+      "tool_access": ["macos-bridge", "sqlite-db", "ollama"],
+      "egress_domains": [],
+      "health_check": {"endpoint": "/health", "interval_seconds": 60, "timeout_seconds": 10}
+    }
+    ```
+- **Coordinator (contract)**:
+  - Coordinator will invoke Mail Agent capabilities via HTTP: `POST /capabilities/{verb}` with the capability payload; Mail Agent returns JSON result per schema. `GET /health` used by registry health checks.
+  - Coordinator capability discovery uses registry `/capabilities` listing; ensure response shape compatibility (Phase 1.1 task below).
+- **macOS Bridge (tool integration)**:
+  - Use Bridge endpoint `GET /v1/mail/messages?mailbox=Inbox|Sent&since&limit&page` for message listings.
+  - For local-only egress, route bridge behind Caddy as `http://kenny.local/bridge` (or add `host.docker.internal` to registry allowlist). Phase 1.1 will configure Caddy and environment variables accordingly.
+- **Data access**:
+  - Read from the existing SQLite `messages` table for search results to maintain a single source of truth. Avoid duplicating storage in the Mail Agent.
+
 **Components to Build**:
+
 ```
 services/mail-agent/
 ├── Dockerfile
@@ -237,6 +286,12 @@ services/mail-agent/
 - [ ] macOS Bridge integration functions correctly
 - [ ] API service can communicate with mail agent
 - [ ] Performance matches or exceeds current implementation
+
+**Phase 1.1 Alignment Tasks (must-complete before E2E validation):**
+- [ ] Align SDK manifest generation with registry schema (map `parameters_schema` → `input_schema`, `returns_schema` → `output_schema`; include `data_scopes`, `tool_access`, `egress_domains`, `health_check`).
+- [ ] Update SDK Registry client to send `AgentRegistration` shape: `{ manifest, health_endpoint }`.
+- [ ] Normalize registry `/capabilities` response or coordinator client filtering so discovery returns usable entries for a specific agent.
+- [ ] Configure Caddy or registry allowlist so Mail Agent can reach Bridge via an allowed local domain (`kenny.local`).
 
 ---
 
@@ -260,7 +315,99 @@ services/mail-agent/
 - `messages.read` - Retrieve full message content
 - `messages.propose_reply` - Generate reply suggestions
 
+### 1.1 Capability Schemas (initial)
+
+- `messages.search`
+  - Input schema (JSON Schema):
+
+    ```json
+    {
+      "type": "object",
+      "properties": {
+        "query": {"type": "string"},
+        "from": {"type": "string"},
+        "to": {"type": "string"},
+        "mailbox": {"type": "string", "enum": ["Inbox", "Sent"]},
+        "since": {"type": "string", "format": "date-time"},
+        "until": {"type": "string", "format": "date-time"},
+        "limit": {"type": "integer", "minimum": 1, "maximum": 500}
+      },
+      "additionalProperties": false
+    }
+    ```
+  - Output schema:
+
+    ```json
+    {
+      "type": "object",
+      "properties": {
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {"type": "string"},
+              "thread_id": {"type": ["string", "null"]},
+              "from": {"type": ["string", "null"]},
+              "to": {"type": "array", "items": {"type": "string"}},
+              "subject": {"type": ["string", "null"]},
+              "snippet": {"type": ["string", "null"]},
+              "ts": {"type": "string", "format": "date-time"},
+              "mailbox": {"type": ["string", "null"]}
+            },
+            "required": ["id", "ts"]
+          }
+        },
+        "count": {"type": "integer"}
+      },
+      "required": ["results", "count"],
+      "additionalProperties": false
+    }
+    ```
+
+- `messages.read`
+  - Input schema:
+
+    ```json
+    {"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"], "additionalProperties": false}
+    ```
+  - Output schema (Phase 1a):
+
+    ```json
+    {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string"},
+        "headers": {"type": "object", "additionalProperties": true},
+        "body_text": {"type": ["string", "null"]},
+        "body_html": {"type": ["string", "null"]}
+      },
+      "required": ["id"],
+      "additionalProperties": true
+    }
+    ```
+  - Note: Bridge currently exposes listings/snippets only. Full-body retrieval will be added as `/v1/mail/message/{id}` or sourced from local DB when available. Target Phase 1b to enable full body.
+
+- `messages.propose_reply`
+  - Input schema:
+
+    ```json
+    {
+      "type": "object",
+      "properties": {"id": {"type": "string"}, "context": {"type": "string"}},
+      "required": ["id"],
+      "additionalProperties": false
+    }
+    ```
+  - Output schema:
+
+    ```json
+    {"type": "object", "properties": {"suggestions": {"type": "array", "items": {"type": "string"}}}, "required": ["suggestions"]}
+    ```
+  - Safety: read-only, local-only; no send action performed.
+
 **Files to Create**:
+
 ```
 services/mail-agent/
 ├── Dockerfile
@@ -278,6 +425,11 @@ services/mail-agent/
 └── tests/
     └── test_mail_agent.py
 ```
+
+**Integration Notes:**
+- Health reporting: expose `GET /health` returning `{ status: "healthy"|"degraded" }` with timestamp.
+- Capability execution: expose `POST /capabilities/{verb}` with body `{ input: <payload> }` and respond with `{ output: <payload> }` per schema.
+- Use `MAC_BRIDGE_URL` to point to Caddy-routed bridge (e.g., `http://kenny.local/bridge`).
 
 ### 1.2 Contacts Agent
 **Objective**: Create agent for contact management and enrichment
