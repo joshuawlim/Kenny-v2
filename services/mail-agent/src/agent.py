@@ -1,0 +1,129 @@
+"""
+Mail Agent for the Kenny v2 multi-agent system.
+
+This agent provides mail functionality including search, read, and reply proposals.
+"""
+
+import os
+from typing import Dict, Any
+from kenny_agent.base_agent import BaseAgent
+from kenny_agent.health import HealthMonitor, HealthCheck, HealthStatus
+
+from .handlers.search import SearchCapabilityHandler
+from .handlers.read import ReadCapabilityHandler
+from .handlers.propose_reply import ProposeReplyCapabilityHandler
+from .tools.mail_bridge import MailBridgeTool
+
+
+class MailAgent(BaseAgent):
+    """Mail Agent providing mail-related capabilities."""
+    
+    def __init__(self):
+        """Initialize the Mail Agent."""
+        super().__init__(
+            agent_id="mail-agent",
+            name="Mail Agent",
+            description="Read-only mail search/read and reply proposals",
+            data_scopes=["mail:inbox", "mail:sent"],
+            tool_access=["macos-bridge", "sqlite-db", "ollama"],
+            egress_domains=[],
+            health_check={"endpoint": "/health", "interval_seconds": 60, "timeout_seconds": 10}
+        )
+        
+        # Register capabilities
+        self.register_capability(SearchCapabilityHandler())
+        self.register_capability(ReadCapabilityHandler())
+        self.register_capability(ProposeReplyCapabilityHandler())
+        
+        # Register tools
+        bridge_url = os.getenv("MAC_BRIDGE_URL", "http://kenny.local/bridge")
+        self.register_tool(MailBridgeTool(bridge_url))
+        
+        # Set up health monitoring
+        self.setup_health_monitoring()
+    
+    def setup_health_monitoring(self):
+        """Set up health checks for the agent."""
+        self.health_monitor = HealthMonitor("mail_agent_monitor")
+        
+        # Add health checks
+        self.health_monitor.add_health_check(
+            HealthCheck(
+                name="agent_status",
+                check_function=self.check_agent_status,
+                description="Check agent operational status",
+                critical=True
+            )
+        )
+        
+        self.health_monitor.add_health_check(
+            HealthCheck(
+                name="capability_count",
+                check_function=self.check_capability_count,
+                description="Check number of registered capabilities"
+            )
+        )
+        
+        self.health_monitor.add_health_check(
+            HealthCheck(
+                name="tool_access",
+                check_function=self.check_tool_access,
+                description="Check tool accessibility"
+            )
+        )
+    
+    def check_agent_status(self):
+        """Health check for agent status."""
+        return HealthStatus(
+            status="healthy",
+            message="Mail Agent is operational",
+            details={"agent_id": self.agent_id, "capabilities": len(self.capabilities)}
+        )
+    
+    def check_capability_count(self):
+        """Health check for capability count."""
+        expected_capabilities = 3  # search, read, propose_reply
+        if len(self.capabilities) >= expected_capabilities:
+            return HealthStatus(
+                status="healthy",
+                message="All expected capabilities are registered",
+                details={"capability_count": len(self.capabilities), "expected": expected_capabilities}
+            )
+        else:
+            return HealthStatus(
+                status="unhealthy",
+                message="Missing expected capabilities",
+                details={"capability_count": len(self.capabilities), "expected": expected_capabilities}
+            )
+    
+    def check_tool_access(self):
+        """Health check for tool accessibility."""
+        if "mail_bridge" in self.tools:
+            return HealthStatus(
+                status="healthy",
+                message="Mail bridge tool is accessible",
+                details={"tool_count": len(self.tools)}
+            )
+        else:
+            return HealthStatus(
+                status="unhealthy",
+                message="Mail bridge tool not accessible",
+                details={"tool_count": len(self.tools)}
+            )
+    
+    async def start(self):
+        """Start the Mail Agent."""
+        print(f"Starting {self.name}...")
+        print(f"Agent ID: {self.agent_id}")
+        print(f"Capabilities: {list(self.capabilities.keys())}")
+        print(f"Tools: {list(self.tools.keys())}")
+        
+        # Update health status
+        self.update_health_status("healthy", "Mail Agent started successfully")
+        print("Mail Agent started successfully!")
+    
+    async def stop(self):
+        """Stop the Mail Agent."""
+        print(f"Stopping {self.name}...")
+        self.update_health_status("degraded", "Mail Agent stopping")
+        print("Mail Agent stopped.")

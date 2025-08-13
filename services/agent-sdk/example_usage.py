@@ -63,7 +63,7 @@ class DatabaseTool(BaseTool):
             name="database_query",
             description="Execute database queries",
             category="database",
-            parameters_schema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "sql": {"type": "string", "description": "SQL query to execute"},

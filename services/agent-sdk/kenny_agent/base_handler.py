@@ -78,7 +78,7 @@ class BaseCapabilityHandler(ABC):
             Dictionary containing capability manifest information
         """
         manifest = {
-            "verb": self.verb,
+            "verb": self.capability,  # Use full capability name as verb
             "input_schema": self.input_schema,
             "output_schema": self.output_schema,
             "safety_annotations": self.safety_annotations,

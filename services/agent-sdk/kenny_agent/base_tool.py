@@ -23,8 +23,8 @@ class BaseTool(ABC):
         name: str,
         description: str,
         version: str = "1.0.0",
-        parameters_schema: Optional[Dict[str, Any]] = None,
-        returns_schema: Optional[Dict[str, Any]] = None,
+        input_schema: Optional[Dict[str, Any]] = None,
+        output_schema: Optional[Dict[str, Any]] = None,
         category: str = "general"
     ):
         """
@@ -34,15 +34,15 @@ class BaseTool(ABC):
             name: Unique name for the tool
             description: Human-readable description of the tool
             version: Version string for the tool
-            parameters_schema: JSON Schema for input parameters
-            returns_schema: JSON Schema for return values
+            input_schema: JSON Schema for input parameters
+            output_schema: JSON Schema for return values
             category: Category of the tool (e.g., 'database', 'file', 'api')
         """
         self.name = name
         self.description = description
         self.version = version
-        self.parameters_schema = parameters_schema or {}
-        self.returns_schema = returns_schema or {}
+        self.input_schema = input_schema or {}
+        self.output_schema = output_schema or {}
         self.category = category
         
         # Tool metadata
@@ -81,8 +81,8 @@ class BaseTool(ABC):
             "description": self.description,
             "version": self.version,
             "category": self.category,
-            "parameters_schema": self.parameters_schema,
-            "returns_schema": self.returns_schema
+            "input_schema": self.input_schema,
+            "output_schema": self.output_schema
         }
         
         return manifest
@@ -101,11 +101,11 @@ class BaseTool(ABC):
             True if parameters are valid, False otherwise
         """
         # Basic validation - subclasses can implement more sophisticated logic
-        if not self.parameters_schema:
+        if not self.input_schema:
             return True  # No schema means accept all parameters
         
         # For now, just check if required fields are present
-        required_fields = self.parameters_schema.get("required", [])
+        required_fields = self.input_schema.get("required", [])
         for field in required_fields:
             if field not in parameters:
                 return False
