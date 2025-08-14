@@ -1,0 +1,1 @@
+Read roadmap.md and development-status.md. Determine the next task in the roadmap and start the next feature. As part of development, first determine success, then determine tests that measure success, and as you code, iteratively check that tests pass before continuing development.
