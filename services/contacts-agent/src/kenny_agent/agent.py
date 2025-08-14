@@ -51,10 +51,10 @@ class ContactsAgent(BaseAgent):
             }
         )
         
-        # Register capability handlers
-        self.register_capability(ResolveContactsHandler())
-        self.register_capability(EnrichContactsHandler())
-        self.register_capability(MergeContactsHandler())
+        # Register capability handlers (pass agent reference for tool access)
+        self.register_capability(ResolveContactsHandler(agent=self))
+        self.register_capability(EnrichContactsHandler(agent=self))
+        self.register_capability(MergeContactsHandler(agent=self))
         
         # Register tools
         self.register_tool(ContactsBridgeTool())

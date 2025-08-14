@@ -21,8 +21,9 @@ class EnrichContactsHandler(BaseCapabilityHandler):
     
     capability = "contacts.enrich"
     
-    def __init__(self):
+    def __init__(self, agent=None):
         """Initialize the enrich contacts handler."""
+        self.agent = agent  # Store reference to agent for tool access
         super().__init__(
             capability="contacts.enrich",
             description="Enrich contact information from various sources",

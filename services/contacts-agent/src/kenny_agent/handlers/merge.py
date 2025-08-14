@@ -21,8 +21,9 @@ class MergeContactsHandler(BaseCapabilityHandler):
     
     capability = "contacts.merge"
     
-    def __init__(self):
+    def __init__(self, agent=None):
         """Initialize the merge contacts handler."""
+        self.agent = agent  # Store reference to agent for tool access
         super().__init__(
             capability="contacts.merge",
             description="Merge duplicate contacts with conflict resolution",

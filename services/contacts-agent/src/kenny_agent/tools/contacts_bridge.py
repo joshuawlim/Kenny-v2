@@ -34,8 +34,9 @@ class ContactsBridgeTool(BaseTool):
         )
         
         # Bridge URL configuration
-        self.bridge_url = "http://localhost:5100"  # Default bridge URL
-        self.timeout = 30.0  # 30 second timeout for bridge requests
+        import os
+        self.bridge_url = os.getenv("MAC_BRIDGE_URL", "http://localhost:5100")
+        self.timeout = 65.0  # 65 second timeout for bridge requests (JXA is slow)
         
         # Initialize local database
         self.db = ContactsDatabase()
@@ -96,7 +97,14 @@ class ContactsBridgeTool(BaseTool):
             List of matching contacts
         """
         try:
-            # Use database search with platform context
+            # First try bridge for live macOS Contacts data
+            bridge_contacts = await self._fetch_from_bridge(query=identifier)
+            if bridge_contacts:
+                print(f"[contacts-bridge] Got {len(bridge_contacts)} contacts from bridge")
+                return bridge_contacts
+            
+            # Fallback to local database
+            print(f"[contacts-bridge] Falling back to local database search")
             contacts = self.db.search_contacts(identifier, platform=platform, fuzzy_match=True)
             
             # Add platform information to results
@@ -140,6 +148,58 @@ class ContactsBridgeTool(BaseTool):
             
         except Exception as e:
             print(f"[contacts-bridge] Error enriching contact: {e}")
+            return []
+    
+    async def _fetch_from_bridge(self, query: str = None, limit: int = 50) -> List[Dict[str, Any]]:
+        """
+        Fetch contacts from the macOS bridge service.
+        
+        Args:
+            query: Search query for contacts
+            limit: Maximum number of contacts to return
+            
+        Returns:
+            List of contact objects from bridge
+        """
+        try:
+            import httpx
+            
+            # Prepare request parameters
+            params = {"limit": limit}
+            if query and query.strip():
+                params["query"] = query.strip()
+            
+            # Make request to bridge
+            print(f"[contacts-bridge] Fetching from bridge: {self.bridge_url}/v1/contacts")
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{self.bridge_url}/v1/contacts",
+                    params=params,
+                    timeout=self.timeout
+                )
+                response.raise_for_status()
+                
+                contacts = response.json()
+                print(f"[contacts-bridge] Bridge returned {len(contacts)} contacts")
+                
+                # Filter out contacts without sufficient information
+                valid_contacts = []
+                for contact in contacts:
+                    if (contact.get("name") or 
+                        contact.get("emails") or 
+                        contact.get("phones")):
+                        valid_contacts.append(contact)
+                
+                return valid_contacts
+                
+        except httpx.HTTPError as e:
+            print(f"[contacts-bridge] HTTP error fetching from bridge: {e}")
+            return []
+        except httpx.TimeoutException:
+            print(f"[contacts-bridge] Timeout fetching from bridge after {self.timeout}s")
+            return []
+        except Exception as e:
+            print(f"[contacts-bridge] Error fetching from bridge: {e}")
             return []
     
     def close(self):

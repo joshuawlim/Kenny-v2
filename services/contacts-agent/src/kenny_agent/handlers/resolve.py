@@ -21,8 +21,9 @@ class ResolveContactsHandler(BaseCapabilityHandler):
     
     capability = "contacts.resolve"
     
-    def __init__(self):
+    def __init__(self, agent=None):
         """Initialize the resolve contacts handler."""
+        self.agent = agent  # Store reference to agent for tool access
         super().__init__(
             capability="contacts.resolve",
             description="Resolve contacts by identifier with fuzzy matching",
@@ -81,14 +82,50 @@ class ResolveContactsHandler(BaseCapabilityHandler):
                 "resolved_count": 0
             }
         
-        # For now, return mock data - this will be replaced with actual contact resolution
-        # TODO: Integrate with contacts bridge tool for real contact lookup
-        mock_contacts = self._generate_mock_contacts(identifier, platform, fuzzy_match)
-        
-        return {
-            "contacts": mock_contacts,
-            "resolved_count": len(mock_contacts)
-        }
+        # Get the contacts bridge tool from the agent
+        try:
+            # Access the tool through the agent's tools registry
+            bridge_tool = None
+            if hasattr(self, 'agent') and hasattr(self.agent, 'tools'):
+                bridge_tool = self.agent.tools.get('contacts_bridge')
+            
+            if bridge_tool:
+                # Use the bridge tool to search for contacts
+                contacts = await bridge_tool.search_contacts(identifier, platform)
+                
+                # Convert to expected output format
+                formatted_contacts = []
+                for contact in contacts:
+                    formatted_contacts.append({
+                        "id": contact.get("id", ""),
+                        "name": contact.get("name", ""),
+                        "emails": contact.get("emails", []),
+                        "phones": contact.get("phones", []),
+                        "confidence": contact.get("confidence", 0.8),
+                        "platforms": contact.get("platforms", ["contacts"])
+                    })
+                
+                return {
+                    "contacts": formatted_contacts,
+                    "resolved_count": len(formatted_contacts)
+                }
+            else:
+                print("[resolve-handler] Bridge tool not available, using mock data")
+                # Fallback to mock data
+                mock_contacts = self._generate_mock_contacts(identifier, platform, fuzzy_match)
+                return {
+                    "contacts": mock_contacts,
+                    "resolved_count": len(mock_contacts)
+                }
+                
+        except Exception as e:
+            print(f"[resolve-handler] Error using bridge tool: {e}")
+            # Fallback to mock data on error
+            mock_contacts = self._generate_mock_contacts(identifier, platform, fuzzy_match)
+            return {
+                "contacts": mock_contacts,
+                "resolved_count": len(mock_contacts)
+            }
     
     def _generate_mock_contacts(self, identifier: str, platform: str = None, fuzzy_match: bool = True) -> List[Dict[str, Any]]:
         """
