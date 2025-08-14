@@ -22,6 +22,8 @@ from .handlers.resolve import ResolveContactsHandler
 from .handlers.enrich import EnrichContactsHandler
 from .handlers.merge import MergeContactsHandler
 from .tools.contacts_bridge import ContactsBridgeTool
+from .tools.message_analyzer import MessageAnalyzer
+from .tools.memory_client import MemoryClient
 
 
 class ContactsAgent(BaseAgent):
@@ -51,13 +53,24 @@ class ContactsAgent(BaseAgent):
             }
         )
         
-        # Register capability handlers (pass agent reference for tool access)
-        self.register_capability(ResolveContactsHandler(agent=self))
-        self.register_capability(EnrichContactsHandler(agent=self))
-        self.register_capability(MergeContactsHandler(agent=self))
+        # Initialize tools
+        self.message_analyzer = MessageAnalyzer()
+        self.memory_client = MemoryClient()
+        self.contacts_bridge_tool = ContactsBridgeTool()
         
         # Register tools
-        self.register_tool(ContactsBridgeTool())
+        self.register_tool(self.contacts_bridge_tool)
+        self.register_tool(self.message_analyzer)
+        self.register_tool(self.memory_client)
+        
+        # Register capability handlers (pass tools for integration)
+        self.register_capability(ResolveContactsHandler(agent=self))
+        self.register_capability(EnrichContactsHandler(
+            agent=self,
+            message_analyzer=self.message_analyzer,
+            memory_client=self.memory_client
+        ))
+        self.register_capability(MergeContactsHandler(agent=self))
         
         # Initialize health monitor
         self.health_monitor = HealthMonitor(self)
