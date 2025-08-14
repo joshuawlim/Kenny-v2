@@ -32,20 +32,28 @@ class MailAgent(BaseAgent):
         
         print(f"Initializing Mail Agent with ID: {self.agent_id}")
         
-        # Register capabilities
-        print("Registering capabilities...")
-        self.register_capability(SearchCapabilityHandler())
-        self.register_capability(ReadCapabilityHandler())
-        self.register_capability(ProposeReplyCapabilityHandler())
-        
-        print(f"Registered capabilities: {list(self.capabilities.keys())}")
-        
-        # Register tools
+        # Register tools first so handlers can access them
         bridge_url = os.getenv("MAC_BRIDGE_URL", "http://localhost:5100")
         print(f"Registering mail bridge tool with URL: {bridge_url}")
         self.register_tool(MailBridgeTool(bridge_url))
         
         print(f"Registered tools: {list(self.tools.keys())}")
+        
+        # Register capabilities with agent reference
+        print("Registering capabilities...")
+        search_handler = SearchCapabilityHandler()
+        search_handler._agent = self
+        self.register_capability(search_handler)
+        
+        read_handler = ReadCapabilityHandler()
+        read_handler._agent = self
+        self.register_capability(read_handler)
+        
+        reply_handler = ProposeReplyCapabilityHandler()
+        reply_handler._agent = self
+        self.register_capability(reply_handler)
+        
+        print(f"Registered capabilities: {list(self.capabilities.keys())}")
         
         # Set up health monitoring
         self.setup_health_monitoring()

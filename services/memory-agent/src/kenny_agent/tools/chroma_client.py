@@ -11,7 +11,7 @@ import time
 import logging
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Add the agent-sdk to the path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent.parent.parent / "agent-sdk"))
@@ -112,7 +112,7 @@ class ChromaClientTool(BaseTool):
             # Prepare metadata
             storage_metadata = metadata or {}
             storage_metadata.update({
-                "stored_at": datetime.utcnow().isoformat(),
+                "stored_at": datetime.now(timezone.utc).isoformat(),
                 "content_length": len(content)
             })
             
@@ -301,7 +301,7 @@ class ChromaClientTool(BaseTool):
             if not self.collection:
                 raise RuntimeError("ChromaDB collection not initialized")
             
-            cutoff_date = datetime.utcnow() - timedelta(days=retention_days)
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
             cutoff_iso = cutoff_date.isoformat()
             
             # Find old memories

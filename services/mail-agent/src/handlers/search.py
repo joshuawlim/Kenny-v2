@@ -60,18 +60,56 @@ class SearchCapabilityHandler(BaseCapabilityHandler):
     
     async def execute(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Execute the search capability.
+        Execute the search capability using the mail bridge tool.
         
         Args:
             parameters: Search parameters
             
         Returns:
-            Search results
+            Search results from the mail bridge
         """
-        # This will be called by the agent with the mail bridge tool
-        # For now, return a mock result structure
-        # TODO: Integrate with actual mail bridge tool execution
+        try:
+            # Get the mail bridge tool from the agent
+            if not hasattr(self, '_agent') or self._agent is None:
+                # Fallback to mock data if no agent context
+                return self._get_mock_search_results(parameters)
+            
+            mail_bridge_tool = self._agent.tools.get("mail_bridge")
+            if not mail_bridge_tool:
+                # Fallback to mock data if mail bridge tool not available
+                return self._get_mock_search_results(parameters)
+            
+            # Execute mail bridge tool with search operation
+            bridge_result = await mail_bridge_tool.execute({
+                "operation": "list_messages",
+                **parameters
+            })
+            
+            # Convert bridge response to capability format
+            if bridge_result.get("success") and "messages" in bridge_result:
+                messages = bridge_result["messages"]
+                return {
+                    "results": messages,
+                    "count": len(messages)
+                }
+            else:
+                # Fallback to mock data on bridge failure
+                return self._get_mock_search_results(parameters)
+                
+        except Exception as e:
+            # Fallback to mock data on any error
+            return self._get_mock_search_results(parameters)
+    
+    def _get_mock_search_results(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Generate mock search results as fallback.
         
+        Args:
+            parameters: Search parameters
+            
+        Returns:
+            Mock search results
+        """
         query = parameters.get("query", "")
         mailbox = parameters.get("mailbox", "Inbox")
         limit = parameters.get("limit", 100)

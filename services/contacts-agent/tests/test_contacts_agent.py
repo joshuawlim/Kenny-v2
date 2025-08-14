@@ -40,7 +40,7 @@ class TestContactsAgent:
         assert agent.description == "Contact management and enrichment with deduplication"
         assert agent.version == "1.0.0"
         assert len(agent.capabilities) == 3
-        assert len(agent.tools) == 1
+        assert len(agent.tools) == 3  # contacts_bridge, message_analyzer, memory_client
         
         # Check capabilities
         assert "contacts.resolve" in agent.capabilities
@@ -220,7 +220,7 @@ class TestEnrichContactsHandler:
         handler = EnrichContactsHandler()
         
         assert handler.capability == "contacts.enrich"
-        assert handler.description == "Enrich contact information from various sources"
+        assert handler.description == "Enrich contact information from message analysis and cross-agent memory integration"
     
     @pytest.mark.asyncio
     async def test_execute_job_title_enrichment(self):

@@ -9,7 +9,7 @@ import sys
 import time
 import uuid
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Add the agent-sdk to the path for imports
@@ -115,7 +115,7 @@ class MemoryStoreHandler(BaseCapabilityHandler):
             
             # Generate unique memory ID
             memory_id = str(uuid.uuid4())
-            stored_at = datetime.utcnow()
+            stored_at = datetime.now(timezone.utc)
             
             # Prepare memory metadata
             memory_metadata = {

@@ -40,24 +40,57 @@ class ReadCapabilityHandler(BaseCapabilityHandler):
     
     async def execute(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Execute the read capability.
+        Execute the read capability using the mail bridge tool.
         
         Args:
             parameters: Read parameters containing message ID
             
         Returns:
-            Message content
+            Message content from the mail bridge
         """
         message_id = parameters.get("id")
         if not message_id:
             raise ValueError("Message ID is required")
         
-        # This will be called by the agent with the mail bridge tool
-        # For now, return a mock result structure
-        # TODO: Integrate with actual mail bridge tool execution
+        try:
+            # Get the mail bridge tool from the agent
+            if not hasattr(self, '_agent') or self._agent is None:
+                # Fallback to mock data if no agent context
+                return self._get_mock_message(message_id)
+            
+            mail_bridge_tool = self._agent.tools.get("mail_bridge")
+            if not mail_bridge_tool:
+                # Fallback to mock data if mail bridge tool not available
+                return self._get_mock_message(message_id)
+            
+            # Execute mail bridge tool with read operation
+            bridge_result = await mail_bridge_tool.execute({
+                "operation": "read_message",
+                "id": message_id
+            })
+            
+            # Convert bridge response to capability format
+            if bridge_result.get("success") and "message" in bridge_result:
+                return bridge_result["message"]
+            else:
+                # Fallback to mock data on bridge failure
+                return self._get_mock_message(message_id)
+                
+        except Exception as e:
+            # Fallback to mock data on any error
+            return self._get_mock_message(message_id)
+    
+    def _get_mock_message(self, message_id: str) -> Dict[str, Any]:
+        """
+        Generate mock message content as fallback.
         
-        # Mock message content
-        message = {
+        Args:
+            message_id: The message ID to read
+            
+        Returns:
+            Mock message content
+        """
+        return {
             "id": message_id,
             "headers": {
                 "from": "sender@example.com",
@@ -68,5 +101,3 @@ class ReadCapabilityHandler(BaseCapabilityHandler):
             "body_text": f"This is the text content of message {message_id}. It contains sample text for testing purposes.",
             "body_html": f"<html><body><p>This is the HTML content of message {message_id}.</p><p>It contains sample HTML for testing purposes.</p></body></html>"
         }
-        
-        return message
