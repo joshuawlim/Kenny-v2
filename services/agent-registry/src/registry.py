@@ -258,3 +258,144 @@ class AgentRegistry:
             "total_capabilities": len(self.capabilities),
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
+    
+    async def get_enhanced_health_dashboard(self) -> Dict[str, Any]:
+        """Get comprehensive health dashboard with performance metrics from all agents."""
+        # Collect enhanced health data from all agents
+        agent_health_data = {}
+        performance_summary = {
+            "total_response_time_ms": 0,
+            "total_success_rate": 0,
+            "total_error_count": 0,
+            "agent_count": 0,
+            "sla_violations": 0,
+            "degrading_agents": 0
+        }
+        
+        for agent_id, agent_status in self.agents.items():
+            try:
+                # Fetch enhanced health data from agent's performance endpoint
+                enhanced_health = await self._fetch_agent_performance_metrics(agent_status)
+                agent_health_data[agent_id] = enhanced_health
+                
+                # Aggregate performance metrics
+                if enhanced_health and "performance_summary" in enhanced_health:
+                    perf = enhanced_health["performance_summary"]["current_metrics"]
+                    sla = enhanced_health["performance_summary"]["sla_compliance"]
+                    
+                    performance_summary["total_response_time_ms"] += perf.get("response_time_ms", 0)
+                    performance_summary["total_success_rate"] += perf.get("success_rate_percent", 100)
+                    performance_summary["total_error_count"] += perf.get("error_count", 0)
+                    performance_summary["agent_count"] += 1
+                    
+                    if not sla.get("overall_compliant", True):
+                        performance_summary["sla_violations"] += 1
+                    
+                    if enhanced_health["performance_summary"]["trend_analysis"].get("trend") == "degrading":
+                        performance_summary["degrading_agents"] += 1
+                        
+            except Exception as e:
+                logger.warning(f"Failed to fetch enhanced health for {agent_id}: {e}")
+                agent_health_data[agent_id] = {"error": str(e)}
+        
+        # Calculate system-wide averages
+        if performance_summary["agent_count"] > 0:
+            avg_response_time = performance_summary["total_response_time_ms"] / performance_summary["agent_count"]
+            avg_success_rate = performance_summary["total_success_rate"] / performance_summary["agent_count"]
+        else:
+            avg_response_time = 0
+            avg_success_rate = 100
+        
+        # Determine overall system health status
+        basic_health = await self.get_system_health()
+        
+        if performance_summary["sla_violations"] > 0:
+            system_status = "degraded"
+            system_message = f"SLA violations in {performance_summary['sla_violations']} agents"
+        elif performance_summary["degrading_agents"] > 0:
+            system_status = "degraded"
+            system_message = f"{performance_summary['degrading_agents']} agents showing performance degradation"
+        else:
+            system_status = basic_health["status"]
+            system_message = "All agents operating within performance parameters"
+        
+        return {
+            "system_overview": {
+                "status": system_status,
+                "message": system_message,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                **basic_health
+            },
+            "performance_overview": {
+                "average_response_time_ms": avg_response_time,
+                "average_success_rate_percent": avg_success_rate,
+                "total_error_count": performance_summary["total_error_count"],
+                "sla_violations": performance_summary["sla_violations"],
+                "degrading_agents": performance_summary["degrading_agents"],
+                "monitored_agents": performance_summary["agent_count"]
+            },
+            "agent_details": agent_health_data,
+            "system_recommendations": self._generate_system_recommendations(performance_summary, agent_health_data)
+        }
+    
+    async def _fetch_agent_performance_metrics(self, agent_status: AgentStatus) -> Optional[Dict[str, Any]]:
+        """Fetch enhanced performance metrics from an agent."""
+        if not agent_status.health_endpoint:
+            return None
+        
+        try:
+            # Try to fetch from enhanced performance endpoint first
+            perf_endpoint = agent_status.health_endpoint.replace("/health", "/health/performance")
+            
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(perf_endpoint)
+                
+                if response.status_code == 200:
+                    return response.json()
+                elif response.status_code == 404:
+                    # Fallback to basic health endpoint
+                    response = await client.get(agent_status.health_endpoint)
+                    if response.status_code == 200:
+                        return {"basic_health": response.json()}
+                
+        except Exception as e:
+            logger.debug(f"Failed to fetch performance metrics for {agent_status.agent_id}: {e}")
+        
+        return None
+    
+    def _generate_system_recommendations(self, performance_summary: Dict[str, Any], agent_health_data: Dict[str, Any]) -> List[str]:
+        """Generate system-wide recommendations based on aggregated health data."""
+        recommendations = []
+        
+        # SLA violation recommendations
+        if performance_summary["sla_violations"] > 0:
+            recommendations.append(
+                f"{performance_summary['sla_violations']} agents have SLA violations. "
+                "Review individual agent performance and consider scaling or optimization."
+            )
+        
+        # Performance degradation recommendations
+        if performance_summary["degrading_agents"] > 0:
+            recommendations.append(
+                f"{performance_summary['degrading_agents']} agents showing performance degradation. "
+                "Monitor resource usage and consider proactive intervention."
+            )
+        
+        # High error rate recommendations
+        if performance_summary["total_error_count"] > 50:
+            recommendations.append(
+                f"High system error count ({performance_summary['total_error_count']}). "
+                "Review error patterns across agents and implement error prevention measures."
+            )
+        
+        # Agent availability recommendations
+        total_agents = len(self.agents)
+        healthy_agents = sum(1 for agent in self.agents.values() if agent.is_healthy)
+        if healthy_agents < total_agents:
+            unhealthy_count = total_agents - healthy_agents
+            recommendations.append(
+                f"{unhealthy_count} agents are unhealthy. "
+                "Check agent connectivity and resolve health issues."
+            )
+        
+        return recommendations

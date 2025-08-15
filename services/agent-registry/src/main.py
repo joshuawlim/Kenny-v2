@@ -92,7 +92,8 @@ async def root():
             "health": "/health",
             "agents": "/agents",
             "capabilities": "/capabilities",
-            "system_health": "/system/health"
+            "system_health": "/system/health",
+            "performance_dashboard": "/system/health/dashboard"
         }
     }
 
@@ -277,6 +278,26 @@ async def get_system_health():
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error while retrieving system health"
+        )
+
+
+@app.get("/system/health/dashboard")
+async def get_enhanced_health_dashboard():
+    """Get comprehensive health dashboard with performance metrics from all agents"""
+    if registry is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Registry service is starting up"
+        )
+    
+    try:
+        dashboard = await registry.get_enhanced_health_dashboard()
+        return dashboard
+    except Exception as e:
+        logger.error(f"Failed to get enhanced health dashboard: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while retrieving health dashboard"
         )
 
 
