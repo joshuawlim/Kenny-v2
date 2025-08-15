@@ -1,0 +1,194 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* CSS Custom Properties for theming */
+:root {
+  /* Light theme variables */
+  --background: 255 255 255;
+  --foreground: 15 23 42;
+  --surface: 248 250 252;
+  --border: 226 232 240;
+  --primary: 20 184 166;
+  --primary-foreground: 255 255 255;
+  --secondary: 241 245 249;
+  --muted: 148 163 184;
+  --accent: 99 102 241;
+  --destructive: 239 68 68;
+  --success: 34 197 94;
+  --warning: 251 191 36;
+}
+
+.dark {
+  /* Dark theme variables */
+  --background: 8 31 26;
+  --foreground: 248 250 252;
+  --surface: 255 255 255 / 0.06;
+  --border: 255 255 255 / 0.12;
+  --primary: 20 184 166;
+  --primary-foreground: 8 31 26;
+  --secondary: 30 41 59;
+  --muted: 100 116 139;
+  --accent: 129 140 248;
+  --destructive: 248 113 113;
+  --success: 52 211 153;
+  --warning: 251 191 36;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Scrollbars */
+  ::-webkit-scrollbar {
+    @apply w-2 h-2;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-kenny-gray-600 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-kenny-gray-500;
+  }
+
+  /* Focus styles */
+  :focus-visible {
+    @apply outline-none ring-2 ring-kenny-primary-500 ring-offset-2 ring-offset-background;
+  }
+
+  /* Selection */
+  ::selection {
+    @apply bg-kenny-primary-500/20 text-foreground;
+  }
+}
+
+@layer components {
+  /* Glass morphism utilities */
+  .glass {
+    @apply bg-white/6 backdrop-blur-xl border border-white/12;
+  }
+
+  .glass-hover {
+    @apply hover:bg-white/10 hover:border-white/20 transition-all duration-200;
+  }
+
+  /* Message bubble styles */
+  .message-user {
+    @apply ml-auto mr-0 bg-kenny-primary-600 text-white;
+  }
+
+  .message-assistant {
+    @apply ml-0 mr-auto bg-surface text-foreground;
+  }
+
+  .message-system {
+    @apply mx-auto bg-kenny-gray-800 text-kenny-gray-300 text-sm;
+  }
+
+  /* Streaming animation */
+  .streaming-dots::after {
+    content: '';
+    @apply inline-block w-2 h-2 ml-1 bg-current rounded-full animate-pulse;
+  }
+
+  /* Command palette styles */
+  .command-palette {
+    @apply glass rounded-lg shadow-2xl border;
+  }
+
+  /* Layout utilities */
+  .sidebar-width {
+    width: 280px;
+  }
+
+  .content-main {
+    margin-left: 280px;
+    margin-right: 280px;
+  }
+
+  .right-rail-width {
+    width: 280px;
+  }
+
+  /* Keyboard shortcut indicators */
+  .kbd {
+    @apply inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-mono 
+           bg-kenny-gray-700 text-kenny-gray-300 rounded border border-kenny-gray-600;
+  }
+
+  /* Loading states */
+  .skeleton {
+    @apply animate-pulse bg-kenny-gray-800 rounded;
+  }
+
+  /* Agent status indicators */
+  .agent-healthy {
+    @apply text-success border-success/20 bg-success/10;
+  }
+
+  .agent-warning {
+    @apply text-warning border-warning/20 bg-warning/10;
+  }
+
+  .agent-error {
+    @apply text-error border-error/20 bg-error/10;
+  }
+
+  /* Cost meter styles */
+  .cost-meter {
+    @apply flex items-center space-x-2 px-3 py-1 rounded-full glass text-sm;
+  }
+
+  .cost-meter.low {
+    @apply text-success border-success/20;
+  }
+
+  .cost-meter.medium {
+    @apply text-warning border-warning/20;
+  }
+
+  .cost-meter.high {
+    @apply text-error border-error/20;
+  }
+}
+
+@layer utilities {
+  /* Reduced motion support */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-stream,
+    .animate-pulse,
+    .animate-fade-in,
+    .animate-slide-up {
+      animation: none;
+    }
+  }
+
+  /* High contrast mode */
+  @media (prefers-contrast: high) {
+    .glass {
+      @apply bg-kenny-gray-900 border-kenny-gray-600;
+    }
+  }
+
+  /* Print styles */
+  @media print {
+    .no-print {
+      display: none;
+    }
+  }
+}
