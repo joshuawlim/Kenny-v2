@@ -17,6 +17,7 @@ export default defineConfig({
         target: 'http://localhost:9000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
+        ws: true, // Enable WebSocket proxying
       },
       '/registry': {
         target: 'http://localhost:8001',

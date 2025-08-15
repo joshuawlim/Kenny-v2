@@ -1,5 +1,6 @@
 // Export all page components
 export { DashboardPage } from './Dashboard'
+export { ChatPage } from './Chat'
 export { AgentsPage } from './Agents'
 export { QueryPage } from './Query'
 export { HealthPage } from './Health'

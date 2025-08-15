@@ -1,0 +1,82 @@
+{
+  "name": "web-agent",
+  "version": "1.0.0",
+  "description": "Kenny v2 Web Automation Agent powered by Puppeteer",
+  "capabilities": [
+    {
+      "name": "web.navigate",
+      "description": "Navigate to a URL and extract content",
+      "parameters": {
+        "url": {
+          "type": "string",
+          "description": "URL to navigate to",
+          "required": true
+        },
+        "wait_for": {
+          "type": "string", 
+          "description": "CSS selector to wait for",
+          "required": false
+        },
+        "screenshot": {
+          "type": "boolean",
+          "description": "Take a screenshot",
+          "default": false
+        }
+      }
+    },
+    {
+      "name": "web.extract",
+      "description": "Extract specific data from a webpage",
+      "parameters": {
+        "url": {
+          "type": "string",
+          "description": "URL to extract from",
+          "required": true
+        },
+        "selectors": {
+          "type": "object",
+          "description": "CSS selectors to extract data",
+          "required": true
+        }
+      }
+    },
+    {
+      "name": "web.interact",
+      "description": "Interact with webpage elements (click, type, etc.)",
+      "parameters": {
+        "url": {
+          "type": "string",
+          "description": "URL to interact with",
+          "required": true
+        },
+        "actions": {
+          "type": "array",
+          "description": "List of actions to perform",
+          "required": true
+        }
+      }
+    },
+    {
+      "name": "web.monitor",
+      "description": "Monitor a webpage for changes",
+      "parameters": {
+        "url": {
+          "type": "string",
+          "description": "URL to monitor",
+          "required": true
+        },
+        "interval": {
+          "type": "number",
+          "description": "Check interval in seconds",
+          "default": 300
+        }
+      }
+    }
+  ],
+  "health_endpoint": "/health",
+  "port": 8008,
+  "dependencies": ["puppeteer"],
+  "tags": ["web", "automation", "scraping", "puppeteer"],
+  "author": "Kenny v2 Team",
+  "license": "MIT"
+}

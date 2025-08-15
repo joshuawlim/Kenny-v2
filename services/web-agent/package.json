@@ -1,0 +1,23 @@
+{
+  "name": "kenny-web-agent",
+  "version": "1.0.0",
+  "description": "Kenny v2 Web Automation Agent powered by Puppeteer",
+  "type": "module",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "node src/main.js",
+    "dev": "node --watch src/main.js",
+    "test": "node --test src/test/*.test.js"
+  },
+  "dependencies": {
+    "puppeteer": "^21.0.0",
+    "express": "^4.18.0",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0"
+  },
+  "keywords": ["kenny", "agent", "web", "automation", "puppeteer"],
+  "author": "Kenny v2 Team",
+  "license": "MIT"
+}

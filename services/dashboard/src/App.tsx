@@ -2,6 +2,7 @@
 import React from 'react';
 import { Routes, Route, useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { ThemeProvider } from './theme';
+import { ChatPage } from './pages';
 
 // Create error boundary component for debugging
 class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: any}> {
@@ -276,21 +277,6 @@ const SimpleDashboard = () => {
 };
 
 // Create placeholder page components
-const ChatPage = () => (
-  <div style={{color: 'white'}}>
-    <h1 style={{fontSize: '32px', fontWeight: 600, marginBottom: '20px'}}>Chat Interface</h1>
-    <div style={{
-      background: 'rgba(255, 255, 255, 0.06)',
-      border: '1px solid rgba(255, 255, 255, 0.12)',
-      borderRadius: '12px',
-      padding: '24px',
-      backdropFilter: 'blur(20px)'
-    }}>
-      <p>💬 Multi-agent chat interface coming soon...</p>
-      <p style={{opacity: 0.7}}>This will be your central hub for communicating with Kenny's agents.</p>
-    </div>
-  </div>
-);
 
 const AgentsPage = () => (
   <div style={{color: 'white'}}>
