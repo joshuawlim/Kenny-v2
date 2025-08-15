@@ -34,19 +34,19 @@ class IntentClassifier:
                     self.agent_capabilities[agent_id] = capabilities
         except Exception as e:
             logger.warning(f"Failed to load agent capabilities: {e}")
-            # Fallback to known capabilities
+            # Fallback to known capabilities with correct agent IDs
             self.agent_capabilities = {
-                "mail_agent": [
+                "mail-agent": [
                     {"verb": "messages.search", "description": "Search mail messages"},
                     {"verb": "messages.read", "description": "Read mail messages"},
                     {"verb": "messages.propose_reply", "description": "Generate reply proposals"}
                 ],
-                "contacts_agent": [
+                "contacts-agent": [
                     {"verb": "contacts.resolve", "description": "Find and disambiguate contacts"},
                     {"verb": "contacts.enrich", "description": "Add contact information"},
                     {"verb": "contacts.merge", "description": "Merge duplicate contacts"}
                 ],
-                "memory_agent": [
+                "memory-agent": [
                     {"verb": "memory.retrieve", "description": "Search stored memories"},
                     {"verb": "memory.store", "description": "Store new memories"},
                     {"verb": "memory.embed", "description": "Generate embeddings"}
@@ -133,7 +133,7 @@ Respond in JSON format:
                 "confidence": 0.7,
                 "required_agents": [
                     {
-                        "agent_id": "mail_agent",
+                        "agent_id": "mail-agent",
                         "capabilities": ["messages.search"],
                         "priority": 1
                     }
@@ -147,7 +147,7 @@ Respond in JSON format:
                 "confidence": 0.7,
                 "required_agents": [
                     {
-                        "agent_id": "contacts_agent",
+                        "agent_id": "contacts-agent",
                         "capabilities": ["contacts.resolve"],
                         "priority": 1
                     }
@@ -161,7 +161,7 @@ Respond in JSON format:
                 "confidence": 0.7,
                 "required_agents": [
                     {
-                        "agent_id": "memory_agent", 
+                        "agent_id": "memory-agent", 
                         "capabilities": ["memory.retrieve"],
                         "priority": 1
                     }

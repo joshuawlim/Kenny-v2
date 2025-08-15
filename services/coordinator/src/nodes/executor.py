@@ -22,19 +22,21 @@ class AgentExecutor:
             
             for agent in agents:
                 agent_id = agent.get("agent_id")
-                base_url = agent.get("base_url")
-                if agent_id and base_url:
+                health_endpoint = agent.get("health_endpoint")
+                if agent_id and health_endpoint:
+                    # Extract base URL from health endpoint
+                    base_url = health_endpoint.replace("/health", "")
                     self.agent_urls[agent_id] = base_url
                     
             logger.info(f"Loaded URLs for {len(self.agent_urls)} agents")
             
         except Exception as e:
             logger.warning(f"Failed to load agent URLs from registry: {e}")
-            # Use default URLs
+            # Use default URLs with correct agent IDs
             self.agent_urls = {
-                "mail_agent": "http://localhost:8000",
-                "contacts_agent": "http://localhost:8003", 
-                "memory_agent": "http://localhost:8004"
+                "mail-agent": "http://localhost:8000",
+                "contacts-agent": "http://localhost:8003", 
+                "memory-agent": "http://localhost:8004"
             }
     
     async def execute_capability(self, agent_id: str, capability: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
@@ -256,7 +258,7 @@ class ExecutorNode:
                 execution_plan.append({
                     "step_id": step_id,
                     "action": action,
-                    "agent_id": "mail_agent",
+                    "agent_id": "mail-agent",
                     "capability": "messages.search",
                     "parameters": {"query": state['user_input'], "limit": 10},
                     "dependencies": []

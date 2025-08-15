@@ -158,7 +158,7 @@ curl "http://localhost:5100/v1/mail/messages?mailbox=Inbox&limit=3"
 - All agents maintain local-first privacy principles
 
 ### Phase 2 Completion Summary ✅ **COMPLETED**
-**Final Status**: Intelligent coordinator orchestration operational
+**Final Status**: Intelligent coordinator orchestration operational with live agent communication
 **Completion Date**: August 15, 2025
 - ✅ All test failures resolved (82/82 tests passing across all components)
 - ✅ Smart request routing with LLM-based intent classification
@@ -166,13 +166,53 @@ curl "http://localhost:5100/v1/mail/messages?mailbox=Inbox&limit=3"
 - ✅ Live agent integration via HTTP communication framework
 - ✅ Policy engine integration with real-time compliance checking
 - ✅ Performance optimization with ~400ms coordination latency
+- ✅ **NEW**: End-to-end coordinator orchestration validated with live agent communication
+- ✅ **NEW**: Agent discovery and registration system fully operational
+- ✅ **NEW**: Live Apple Mail integration through coordinator (30s initial, 3s cached)
 
 **Quick Setup for Coordinator Testing**:
 ```bash
-# 1. Start all services (see Quick Start above)
-# 2. Test coordinator: curl http://localhost:8002/coordinator/graph
-# 3. Test orchestration: POST to coordinator/process with user requests
-# 4. Verify multi-agent workflows execute correctly with policy compliance
+# 1. Install Agent SDK: pip3 install -e services/agent-sdk/
+# 2. Start all services (see Quick Start above)
+# 3. Register agents with registry (automatically done on startup)
+# 4. Test coordinator: curl http://localhost:8002/coordinator/graph
+# 5. Test orchestration: POST to coordinator/process with user requests
+# 6. Verify multi-agent workflows execute correctly with policy compliance
+```
+
+## Agent Registration & Startup Procedures
+
+### Prerequisites
+```bash
+# Install Kenny Agent SDK
+cd services/agent-sdk && pip3 install -e .
+```
+
+### Service Startup Order
+1. **Agent Registry** (Port 8001): Central service discovery
+2. **Agent Services** (Ports 8000, 8003, 8004): Individual agents
+3. **Bridge** (Port 5100): Live data integration
+4. **Coordinator** (Port 8002): Orchestration service
+
+### Agent Registration Process
+Each agent automatically registers with the registry on startup using:
+- Agent ID: `mail-agent`, `contacts-agent`, `memory-agent`
+- Health endpoint: `http://localhost:PORT/health`  
+- Capabilities: Defined in agent manifest
+- Data scopes: Following pattern `domain:subdomain`
+
+### Validation Commands
+```bash
+# Check agent registration
+curl -s http://localhost:8001/agents | jq '.[]'
+
+# Test coordinator discovery  
+curl -s http://localhost:8002/agents | jq '.count'
+
+# Test end-to-end orchestration
+curl -X POST http://localhost:8002/coordinator/process \
+  -H "Content-Type: application/json" \
+  -d '{"user_input": "Search my inbox for recent emails"}'
 ```
 
 ### Phase 1 Completion Summary ✅ **COMPLETED**
