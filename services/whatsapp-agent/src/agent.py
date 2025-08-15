@@ -10,7 +10,10 @@ from kenny_agent.base_agent import BaseAgent
 from kenny_agent.health import HealthMonitor, HealthCheck, HealthStatus
 
 from .handlers.search import SearchCapabilityHandler
+from .handlers.read import ReadCapabilityHandler
+from .handlers.propose_reply import ProposeReplyCapabilityHandler
 from .tools.whatsapp_bridge import WhatsAppBridgeTool
+from .tools.image_processor import LocalImageProcessor
 
 
 class WhatsAppAgent(BaseAgent):
@@ -35,6 +38,9 @@ class WhatsAppAgent(BaseAgent):
         print(f"Registering WhatsApp bridge tool with URL: {bridge_url}")
         self.register_tool(WhatsAppBridgeTool(bridge_url))
         
+        print("Registering local image processor tool...")
+        self.register_tool(LocalImageProcessor())
+        
         print(f"Registered tools: {list(self.tools.keys())}")
         
         # Register capabilities with agent reference
@@ -42,6 +48,14 @@ class WhatsAppAgent(BaseAgent):
         search_handler = SearchCapabilityHandler()
         search_handler._agent = self
         self.register_capability(search_handler)
+        
+        read_handler = ReadCapabilityHandler()
+        read_handler._agent = self
+        self.register_capability(read_handler)
+        
+        reply_handler = ProposeReplyCapabilityHandler()
+        reply_handler._agent = self
+        self.register_capability(reply_handler)
         
         print(f"Registered capabilities: {list(self.capabilities.keys())}")
         
@@ -90,7 +104,7 @@ class WhatsAppAgent(BaseAgent):
     
     def check_capability_count(self):
         """Health check for capability count."""
-        expected_capabilities = 1  # search (basic implementation)
+        expected_capabilities = 3  # search, read, propose_reply
         if len(self.capabilities) >= expected_capabilities:
             return HealthStatus(
                 status="healthy",
@@ -106,17 +120,20 @@ class WhatsAppAgent(BaseAgent):
     
     def check_tool_access(self):
         """Health check for tool accessibility."""
-        if "whatsapp_bridge" in self.tools:
+        required_tools = ["whatsapp_bridge", "image_processor"]
+        missing_tools = [tool for tool in required_tools if tool not in self.tools]
+        
+        if not missing_tools:
             return HealthStatus(
                 status="healthy",
-                message="WhatsApp bridge tool is accessible",
-                details={"tool_count": len(self.tools)}
+                message="All required tools are accessible",
+                details={"tool_count": len(self.tools), "tools": list(self.tools.keys())}
             )
         else:
             return HealthStatus(
-                status="unhealthy",
-                message="WhatsApp bridge tool not accessible",
-                details={"tool_count": len(self.tools)}
+                status="degraded",
+                message=f"Missing tools: {missing_tools}",
+                details={"tool_count": len(self.tools), "missing": missing_tools}
             )
     
     async def start(self):

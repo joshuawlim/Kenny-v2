@@ -163,6 +163,22 @@ async def execute_capability(verb: str, request: CapabilityRequest):
         }
         return CapabilityResponse(output=output)
 
+    # Handle chats.read capability
+    if verb == "chats.read":
+        try:
+            result = await whatsapp_agent.execute_capability(verb, request.input)
+            return CapabilityResponse(output=result)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Read capability failed: {str(e)}")
+
+    # Handle chats.propose_reply capability  
+    if verb == "chats.propose_reply":
+        try:
+            result = await whatsapp_agent.execute_capability(verb, request.input)
+            return CapabilityResponse(output=result)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Propose reply capability failed: {str(e)}")
+
     # Debug: Print what we're looking for and what we have
     print(f"Looking for capability: '{verb}'")
     print(f"Available capabilities: {list(whatsapp_agent.capabilities.keys())}")
