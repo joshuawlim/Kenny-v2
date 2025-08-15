@@ -1,10 +1,10 @@
 # Kenny v2 - Local-First Multi-Agent Personal Assistant
 
-**Status**: 🎉 **Production Ready** - Phase 5 Complete  
+**Status**: 🎉 **Production Ready** - Phase 7.1 Complete  
 **Architecture**: Coordinator-led multi-agent system with LangGraph orchestration  
 **Last Updated**: August 15, 2025
 
-Kenny v2 is a local-first, privacy-focused multi-agent personal assistant system that keeps all your data on your device while providing intelligent automation across email, messaging, calendar, and contacts.
+Kenny v2 is a local-first, privacy-focused multi-agent personal assistant system that keeps all your data on your device while providing intelligent automation across email, messaging, calendar, and contacts. Now includes complete one-click service management for effortless deployment and monitoring.
 
 ---
 
@@ -12,9 +12,8 @@ Kenny v2 is a local-first, privacy-focused multi-agent personal assistant system
 
 ### Prerequisites
 - **macOS** (required for Mail, Contacts, Calendar, iMessage integration)
-- **Docker Desktop** 
 - **Ollama** (`brew install ollama`)
-- **Python 3.11+**, **Xcode Command Line Tools**
+- **Python 3.11+**, **Node.js 18+**, **Xcode Command Line Tools**
 
 ### 1. Install Dependencies
 ```bash
@@ -33,7 +32,22 @@ cd services/agent-sdk && pip3 install -e .
 - Accessibility permissions
 - Automation permissions
 
-### 3. Start All Services
+### 3. ⚡ One-Click Launch (Recommended)
+```bash
+# Start Kenny with comprehensive service management
+./kenny-launch.sh
+
+# Monitor services in real-time (in another terminal)
+./kenny-status.sh --watch
+
+# Check system health
+./kenny-health.sh
+
+# Stop all services cleanly
+./kenny-stop.sh
+```
+
+### 4. Alternative: Manual Service Start
 ```bash
 # Start core services
 cd services/agent-registry && python3 -m uvicorn src.main:app --port 8001 &
@@ -54,7 +68,7 @@ cd services/calendar-agent/src && PYTHONPATH="../../agent-sdk" python3 main.py &
 cd bridge && MAIL_BRIDGE_MODE=live IMESSAGE_BRIDGE_MODE=live CALENDAR_BRIDGE_MODE=live python3 app.py &
 ```
 
-### 4. Test the System
+### 5. Test the System
 ```bash
 # Check system health
 curl http://localhost:9000/health
@@ -327,6 +341,10 @@ Kenny v2/
 ├── PROJECT_STATUS.md              # Complete project status and roadmap
 ├── README.md                      # This file
 ├── PHASE_4_3_SECURITY_DEPLOYMENT.md # Security deployment guide
+├── kenny-launch.sh                # One-click launcher script
+├── kenny-health.sh                # System health monitoring
+├── kenny-status.sh                # Real-time service status
+├── kenny-stop.sh                  # Clean shutdown script
 ├── bridge/                        # macOS integration bridge
 ├── docs/                          # Architecture documentation
 ├── infra/                         # Docker and infrastructure
@@ -335,6 +353,7 @@ Kenny v2/
 │   ├── agent-sdk/                 # Agent development framework
 │   ├── coordinator/               # Multi-agent orchestration
 │   ├── gateway/                   # Unified API gateway
+│   ├── dashboard/                 # React dashboard
 │   ├── mail-agent/                # Apple Mail integration
 │   ├── contacts-agent/            # Contacts management
 │   ├── memory-agent/              # Semantic storage
@@ -355,12 +374,14 @@ Kenny v2/
 - **Phase 3**: Communication Agents (100% coverage ✅)
 - **Phase 4**: Observability & Safety (comprehensive validation ✅)
 - **Phase 5**: User Interface & API Gateway (5/5 test suites ✅)
+- **Phase 6**: React Dashboard Web Interface (comprehensive testing ✅)
+- **Phase 7.1**: Service Management Scripts (complete suite ✅)
 
-### 🎯 Next: Phase 6 - Advanced Features & Optimization
-- React dashboard with real-time monitoring
-- Chat interface with Kenny persona
-- Advanced performance optimization
-- Usage analytics and insights
+### 🎯 Next: Phase 7.2 - User Experience Enhancements
+- Kenny persona integration in chat interface
+- Setup wizard in React dashboard
+- Non-technical user documentation
+- Enhanced user-friendly features
 
 ---
 
@@ -385,7 +406,7 @@ This project implements a local-first architecture following ADR-0019 privacy pr
 
 ---
 
-**🎉 Kenny v2 is production-ready with enterprise-grade capabilities, comprehensive testing, and local-first privacy controls.**
+**🎉 Kenny v2 is production-ready with enterprise-grade capabilities, comprehensive testing, local-first privacy controls, and effortless one-click service management.**
 
 For detailed project status and roadmap, see `PROJECT_STATUS.md`.
 
