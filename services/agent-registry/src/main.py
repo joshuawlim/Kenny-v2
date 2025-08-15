@@ -1,5 +1,7 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -328,14 +330,29 @@ async def root():
             "capabilities": "/capabilities",
             "system_health": "/system/health",
             "performance_dashboard": "/system/health/dashboard",
+            "dashboard_streaming": "/system/health/dashboard/stream",
             "traces": "/traces",
             "trace_collection": "/traces/collect",
+            "trace_streaming": "/traces/stream/live",
             "alerts": "/alerts",
             "alert_summary": "/alerts/summary",
+            "alert_streaming": "/alerts/stream/live",
             "analytics": "/analytics",
             "analytics_dashboard": "/analytics/dashboard",
             "security": "/security",
-            "security_dashboard": "/security/dashboard"
+            "security_dashboard": "/security/dashboard",
+            "security_events": "/security/events",
+            "security_events_streaming": "/security/events/stream",
+            "security_incidents": "/security/incidents",
+            "incident_management": "/security/incidents/management/dashboard",
+            "compliance_summary": "/security/compliance/summary",
+            "security_analytics": "/security/analytics/dashboard",
+            "security_metrics": "/security/metrics/collect",
+            "security_trends": "/security/trends",
+            "security_forecast": "/security/forecast",
+            "response_rules": "/security/response/rules",
+            "response_actions": "/security/response/actions/history",
+            "response_dashboard": "/security/response/dashboard"
         }
     }
 
@@ -852,6 +869,479 @@ async def get_security_compliance_summary():
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error while retrieving compliance summary"
+        )
+
+
+@app.get("/security/events/stream")
+async def stream_live_security_events():
+    """Stream live security events as Server-Sent Events"""
+    if not SECURITY_AVAILABLE or security_monitor is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Security monitoring service not available"
+        )
+    
+    async def generate_live_security_events():
+        """Generate live security event updates"""
+        import asyncio
+        
+        last_event_count = 0
+        last_incident_count = 0
+        
+        while True:
+            try:
+                # Get recent security events
+                recent_events = security_monitor.event_collector.get_events(hours=1)
+                current_event_count = len(recent_events)
+                
+                # Get recent incidents
+                recent_incidents = security_monitor.event_collector.get_incidents(hours=1)
+                current_incident_count = len(recent_incidents)
+                
+                # Check for new security events
+                if current_event_count > last_event_count:
+                    new_events = recent_events[:current_event_count - last_event_count]
+                    new_event_dicts = [event.to_dict() for event in new_events]
+                    
+                    if new_event_dicts:
+                        event_data = {
+                            "type": "new_security_events",
+                            "events": new_event_dicts,
+                            "count": len(new_event_dicts),
+                            "timestamp": asyncio.get_event_loop().time()
+                        }
+                        yield f"data: {json.dumps(event_data)}\n\n"
+                    
+                    last_event_count = current_event_count
+                
+                # Check for new incidents
+                if current_incident_count > last_incident_count:
+                    new_incidents = recent_incidents[:current_incident_count - last_incident_count]
+                    new_incident_dicts = [incident.to_dict() for incident in new_incidents]
+                    
+                    if new_incident_dicts:
+                        incident_data = {
+                            "type": "new_security_incidents",
+                            "incidents": new_incident_dicts,
+                            "count": len(new_incident_dicts),
+                            "timestamp": asyncio.get_event_loop().time()
+                        }
+                        yield f"data: {json.dumps(incident_data)}\n\n"
+                    
+                    last_incident_count = current_incident_count
+                
+                # Send periodic security status updates
+                if int(asyncio.get_event_loop().time()) % 30 == 0:  # Every 30 seconds
+                    security_status = {
+                        "type": "security_status_update",
+                        "status": {
+                            "total_events_1h": current_event_count,
+                            "total_incidents_1h": current_incident_count,
+                            "compliance_summary": security_monitor.validate_privacy_compliance("status_check", {})
+                        },
+                        "timestamp": asyncio.get_event_loop().time()
+                    }
+                    yield f"data: {json.dumps(security_status)}\n\n"
+                
+                # Wait before next check
+                await asyncio.sleep(3.0)  # Check every 3 seconds for rapid security response
+                
+            except Exception as e:
+                logger.error(f"Error in live security event streaming: {e}")
+                error_event = {
+                    "type": "error",
+                    "message": str(e),
+                    "timestamp": asyncio.get_event_loop().time()
+                }
+                yield f"data: {json.dumps(error_event)}\n\n"
+                await asyncio.sleep(10.0)  # Wait longer on error
+    
+    return StreamingResponse(
+        generate_live_security_events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
+
+
+@app.get("/security/incidents")
+async def get_security_incidents(hours: int = 24, status: Optional[str] = None):
+    """Get security incidents with optional filtering"""
+    if not SECURITY_AVAILABLE or security_monitor is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Security monitoring service not available"
+        )
+    
+    try:
+        if hours < 1 or hours > 168:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Hours must be between 1 and 168"
+            )
+        
+        incidents = security_monitor.event_collector.get_incidents(hours=hours, status=status)
+        incident_dicts = [incident.to_dict() for incident in incidents]
+        
+        return {
+            "incidents": incident_dicts,
+            "total_count": len(incident_dicts),
+            "time_period_hours": hours,
+            "status_filter": status
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get security incidents: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while retrieving security incidents"
+        )
+
+
+@app.get("/security/incidents/management/dashboard")
+async def get_incident_management_dashboard(hours: int = 24):
+    """Get incident management dashboard"""
+    if not SECURITY_AVAILABLE or security_monitor is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Security monitoring service not available"
+        )
+    
+    try:
+        if hours < 1 or hours > 168:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Hours must be between 1 and 168"
+            )
+        
+        dashboard = security_monitor.get_incident_management_dashboard(hours)
+        return dashboard
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get incident management dashboard: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while retrieving incident management dashboard"
+        )
+
+
+@app.get("/security/analytics/dashboard")
+async def get_security_analytics_dashboard(hours: int = 24):
+    """Get comprehensive security analytics dashboard with metrics and trends"""
+    if not SECURITY_AVAILABLE or security_monitor is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Security monitoring service not available"
+        )
+    
+    try:
+        if hours < 1 or hours > 168:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Hours must be between 1 and 168"
+            )
+        
+        dashboard = security_monitor.get_security_analytics_dashboard(hours)
+        return dashboard
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get security analytics dashboard: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while retrieving security analytics dashboard"
+        )
+
+
+@app.get("/security/metrics/collect")
+async def collect_security_metrics():
+    """Collect current security metrics snapshot"""
+    if not SECURITY_AVAILABLE or security_monitor is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Security monitoring service not available"
+        )
+    
+    try:
+        metrics = security_monitor.collect_security_metrics()
+        return {
+            "status": "collected",
+            "metrics": metrics,
+            "collected_at": datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to collect security metrics: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while collecting security metrics"
+        )
+
+
+@app.get("/security/trends")
+async def get_security_trends(hours: int = 24):
+    """Get security trends analysis"""
+    if not SECURITY_AVAILABLE or security_monitor is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Security monitoring service not available"
+        )
+    
+    try:
+        if hours < 1 or hours > 168:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Hours must be between 1 and 168"
+            )
+        
+        trends = security_monitor.get_security_trends(hours)
+        return trends
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get security trends: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while retrieving security trends"
+        )
+
+
+@app.get("/security/forecast")
+async def get_security_forecast(hours_ahead: int = 24):
+    """Get security forecast based on current trends"""
+    if not SECURITY_AVAILABLE or security_monitor is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Security monitoring service not available"
+        )
+    
+    try:
+        if hours_ahead < 1 or hours_ahead > 168:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Hours ahead must be between 1 and 168"
+            )
+        
+        forecast = security_monitor.get_security_forecast(hours_ahead)
+        return forecast
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get security forecast: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while retrieving security forecast"
+        )
+
+
+@app.post("/security/incidents/{incident_id}/update")
+async def update_security_incident(incident_id: str, update_data: Dict[str, Any]):
+    """Update security incident status and details"""
+    if not SECURITY_AVAILABLE or security_monitor is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Security monitoring service not available"
+        )
+    
+    status_value = update_data.get("status")
+    assigned_to = update_data.get("assigned_to")
+    resolution_notes = update_data.get("resolution_notes")
+    
+    if not status_value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="status is required"
+        )
+    
+    valid_statuses = ["open", "investigating", "resolved", "false_positive"]
+    if status_value not in valid_statuses:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"status must be one of: {', '.join(valid_statuses)}"
+        )
+    
+    try:
+        success = security_monitor.event_collector.update_incident_status(
+            incident_id, status_value, assigned_to, resolution_notes
+        )
+        
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Incident {incident_id} not found"
+            )
+        
+        return {
+            "status": "updated",
+            "incident_id": incident_id,
+            "new_status": status_value,
+            "assigned_to": assigned_to,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update incident {incident_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while updating incident"
+        )
+
+
+@app.get("/security/incidents/{incident_id}")
+async def get_security_incident_details(incident_id: str):
+    """Get detailed information about a specific security incident"""
+    if not SECURITY_AVAILABLE or security_monitor is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Security monitoring service not available"
+        )
+    
+    try:
+        incident = security_monitor.event_collector.get_incident(incident_id)
+        
+        if not incident:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Incident {incident_id} not found"
+            )
+        
+        # Get related events
+        related_events = []
+        for event_id in incident.event_ids:
+            for event in security_monitor.event_collector.get_events(hours=168):  # Look back 1 week
+                if event.event_id == event_id:
+                    related_events.append(event.to_dict())
+                    break
+        
+        return {
+            "incident": incident.to_dict(),
+            "related_events": related_events,
+            "event_count": len(related_events)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get incident details for {incident_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while retrieving incident details"
+        )
+
+
+@app.get("/security/response/rules")
+async def get_automated_response_rules():
+    """Get all automated response rules"""
+    if not SECURITY_AVAILABLE or security_monitor is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Security monitoring service not available"
+        )
+    
+    try:
+        rules = security_monitor.response_engine.get_response_rules()
+        rule_dicts = []
+        
+        for rule in rules:
+            rule_dict = {
+                "rule_id": rule.rule_id,
+                "name": rule.name,
+                "description": rule.description,
+                "enabled": rule.enabled,
+                "priority": rule.priority,
+                "triggers": rule.triggers,
+                "actions": [
+                    {
+                        "action_id": action.action_id,
+                        "action_type": action.action_type,
+                        "description": action.description,
+                        "enabled": action.enabled,
+                        "cooldown_minutes": action.cooldown_minutes,
+                        "parameters": action.parameters
+                    }
+                    for action in rule.actions
+                ]
+            }
+            rule_dicts.append(rule_dict)
+        
+        return {
+            "rules": rule_dicts,
+            "total_count": len(rule_dicts),
+            "enabled_count": len([r for r in rules if r.enabled])
+        }
+    except Exception as e:
+        logger.error(f"Failed to get response rules: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while retrieving response rules"
+        )
+
+
+@app.get("/security/response/actions/history")
+async def get_response_action_history(hours: int = 24):
+    """Get automated response action execution history"""
+    if not SECURITY_AVAILABLE or security_monitor is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Security monitoring service not available"
+        )
+    
+    try:
+        if hours < 1 or hours > 168:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Hours must be between 1 and 168"
+            )
+        
+        action_history = security_monitor.get_response_action_history(hours)
+        
+        return {
+            "actions": action_history,
+            "total_count": len(action_history),
+            "time_period_hours": hours,
+            "successful_count": len([a for a in action_history if a.get("status") == "completed"]),
+            "failed_count": len([a for a in action_history if a.get("status") == "failed"])
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get response action history: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while retrieving response action history"
+        )
+
+
+@app.get("/security/response/dashboard")
+async def get_automated_response_dashboard(hours: int = 24):
+    """Get automated response dashboard"""
+    if not SECURITY_AVAILABLE or security_monitor is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Security monitoring service not available"
+        )
+    
+    try:
+        if hours < 1 or hours > 168:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Hours must be between 1 and 168"
+            )
+        
+        dashboard = security_monitor.get_automated_response_dashboard(hours)
+        return dashboard
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get automated response dashboard: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while retrieving automated response dashboard"
         )
 
 

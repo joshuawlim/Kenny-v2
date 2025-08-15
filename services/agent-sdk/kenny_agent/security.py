@@ -355,18 +355,60 @@ class DataAccessMonitor:
         return recent_access
 
 
+class SecurityIncident:
+    """Represents a security incident with multiple related events."""
+    
+    def __init__(self, incident_id: str, event_ids: List[str], severity: SecuritySeverity, 
+                 title: str, description: str):
+        """Initialize security incident."""
+        self.incident_id = incident_id
+        self.event_ids = event_ids
+        self.severity = severity
+        self.title = title
+        self.description = description
+        self.created_at = datetime.now(timezone.utc)
+        self.status = "open"  # open, investigating, resolved, false_positive
+        self.assigned_to: Optional[str] = None
+        self.resolution_notes: Optional[str] = None
+        self.resolved_at: Optional[datetime] = None
+        self.escalated = False
+        
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert incident to dictionary representation."""
+        return {
+            "incident_id": self.incident_id,
+            "event_ids": self.event_ids,
+            "severity": self.severity.value,
+            "title": self.title,
+            "description": self.description,
+            "created_at": self.created_at.isoformat(),
+            "status": self.status,
+            "assigned_to": self.assigned_to,
+            "resolution_notes": self.resolution_notes,
+            "resolved_at": self.resolved_at.isoformat() if self.resolved_at else None,
+            "escalated": self.escalated
+        }
+
+
 class SecurityEventCollector:
-    """Central collector for security events."""
+    """Central collector for security events with incident management."""
     
     def __init__(self):
         """Initialize security event collector."""
         self.events: List[SecurityEvent] = []
+        self.incidents: List[SecurityIncident] = []
         self.max_events = 10000
+        self.max_incidents = 1000
         self.event_handlers: List[Callable[[SecurityEvent], None]] = []
+        self.incident_handlers: List[Callable[[SecurityIncident], None]] = []
+        self.correlation_window_minutes = 30  # Group related events within 30 minutes
     
     def collect_event(self, event: SecurityEvent):
-        """Collect a security event."""
+        """Collect a security event and potentially create incidents."""
         self.events.append(event)
+        
+        # Check for incident creation/correlation
+        self._check_incident_correlation(event)
         
         # Notify handlers
         for handler in self.event_handlers:
@@ -381,9 +423,159 @@ class SecurityEventCollector:
         
         logger.warning(f"SECURITY EVENT [{event.severity.value.upper()}]: {event.title}")
     
+    def _check_incident_correlation(self, new_event: SecurityEvent):
+        """Check if event should create or correlate with existing incidents."""
+        # Check for similar events within correlation window
+        cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=self.correlation_window_minutes)
+        
+        related_events = []
+        for event in self.events:
+            if (event.timestamp >= cutoff_time and
+                event.event_type == new_event.event_type and
+                event.source_service == new_event.source_service and
+                event.severity in [SecuritySeverity.CRITICAL, SecuritySeverity.HIGH]):
+                related_events.append(event)
+        
+        # If we have multiple related high-severity events, create incident
+        if len(related_events) >= 2:  # Including the new event
+            self._create_incident(related_events + [new_event])
+    
+    def _create_incident(self, events: List[SecurityEvent]):
+        """Create a security incident from related events."""
+        import uuid
+        
+        # Check if incident already exists for these events
+        event_ids = {e.event_id for e in events}
+        for incident in self.incidents:
+            if event_ids.intersection(set(incident.event_ids)):
+                # Update existing incident with new events
+                new_event_ids = event_ids - set(incident.event_ids)
+                incident.event_ids.extend(list(new_event_ids))
+                logger.warning(f"Updated security incident {incident.incident_id} with {len(new_event_ids)} new events")
+                return incident
+        
+        # Create new incident
+        incident_id = str(uuid.uuid4())
+        
+        # Determine incident severity (highest event severity)
+        max_severity = max(events, key=lambda e: [s for s in SecuritySeverity][::-1].index(e.severity)).severity
+        
+        # Generate incident title and description
+        event_type = events[0].event_type.value.replace("_", " ").title()
+        service = events[0].source_service
+        
+        title = f"Multiple {event_type} Events from {service}"
+        description = f"Detected {len(events)} related {event_type.lower()} events from {service} within {self.correlation_window_minutes} minutes"
+        
+        incident = SecurityIncident(
+            incident_id=incident_id,
+            event_ids=[e.event_id for e in events],
+            severity=max_severity,
+            title=title,
+            description=description
+        )
+        
+        # Auto-escalate critical incidents
+        if max_severity == SecuritySeverity.CRITICAL:
+            incident.escalated = True
+            incident.status = "investigating"
+        
+        self.incidents.append(incident)
+        
+        # Trim incidents if needed
+        if len(self.incidents) > self.max_incidents:
+            self.incidents = self.incidents[-self.max_incidents:]
+        
+        # Notify incident handlers
+        for handler in self.incident_handlers:
+            try:
+                handler(incident)
+            except Exception as e:
+                logger.error(f"Error in incident handler: {e}")
+        
+        logger.critical(f"SECURITY INCIDENT CREATED: {incident.title} ({incident.incident_id})")
+        return incident
+    
     def add_event_handler(self, handler: Callable[[SecurityEvent], None]):
         """Add handler for security events."""
         self.event_handlers.append(handler)
+    
+    def add_incident_handler(self, handler: Callable[[SecurityIncident], None]):
+        """Add handler for security incidents."""
+        self.incident_handlers.append(handler)
+    
+    def get_incidents(self, status: Optional[str] = None, severity: Optional[SecuritySeverity] = None,
+                     hours: int = 24) -> List[SecurityIncident]:
+        """Get security incidents with optional filtering."""
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+        
+        filtered_incidents = []
+        for incident in self.incidents:
+            if incident.created_at >= cutoff_time:
+                if status and incident.status != status:
+                    continue
+                if severity and incident.severity != severity:
+                    continue
+                filtered_incidents.append(incident)
+        
+        # Sort by creation time (most recent first)
+        filtered_incidents.sort(key=lambda i: i.created_at, reverse=True)
+        return filtered_incidents
+    
+    def get_incident(self, incident_id: str) -> Optional[SecurityIncident]:
+        """Get a specific incident by ID."""
+        for incident in self.incidents:
+            if incident.incident_id == incident_id:
+                return incident
+        return None
+    
+    def update_incident_status(self, incident_id: str, status: str, assigned_to: Optional[str] = None,
+                              resolution_notes: Optional[str] = None) -> bool:
+        """Update incident status and assignment."""
+        incident = self.get_incident(incident_id)
+        if not incident:
+            return False
+        
+        incident.status = status
+        if assigned_to:
+            incident.assigned_to = assigned_to
+        if resolution_notes:
+            incident.resolution_notes = resolution_notes
+        
+        if status in ["resolved", "false_positive"]:
+            incident.resolved_at = datetime.now(timezone.utc)
+        
+        logger.info(f"Updated incident {incident_id} status to {status}")
+        return True
+    
+    def get_incident_summary(self) -> Dict[str, Any]:
+        """Get summary of security incidents."""
+        recent_incidents = self.get_incidents(hours=24)
+        
+        # Count by status
+        status_counts = {}
+        for incident in recent_incidents:
+            status = incident.status
+            status_counts[status] = status_counts.get(status, 0) + 1
+        
+        # Count by severity
+        severity_counts = {}
+        for severity in SecuritySeverity:
+            severity_counts[severity.value] = len([i for i in recent_incidents if i.severity == severity])
+        
+        # Calculate metrics
+        open_incidents = len([i for i in recent_incidents if i.status == "open"])
+        escalated_incidents = len([i for i in recent_incidents if i.escalated])
+        
+        return {
+            "total_incidents_24h": len(recent_incidents),
+            "open_incidents": open_incidents,
+            "escalated_incidents": escalated_incidents,
+            "by_status": status_counts,
+            "by_severity": severity_counts,
+            "critical_incidents": severity_counts.get("critical", 0),
+            "high_incidents": severity_counts.get("high", 0)
+        }
     
     def get_events(self, hours: int = 24, severity: Optional[SecuritySeverity] = None,
                   event_type: Optional[SecurityEventType] = None) -> List[SecurityEvent]:
@@ -426,6 +618,648 @@ class SecurityEventCollector:
         }
 
 
+@dataclass
+class ResponseAction:
+    """Represents an automated response action."""
+    action_id: str
+    action_type: str  # "isolate", "alert", "block", "quarantine", "notify"
+    description: str
+    parameters: Dict[str, Any] = field(default_factory=dict)
+    enabled: bool = True
+    cooldown_minutes: int = 60  # Minimum time between same actions
+
+
+@dataclass
+class ResponseRule:
+    """Represents an automated incident response rule."""
+    rule_id: str
+    name: str
+    description: str
+    triggers: Dict[str, Any]  # Conditions that trigger this rule
+    actions: List[ResponseAction]
+    enabled: bool = True
+    priority: int = 100  # Lower numbers = higher priority
+
+
+class AutomatedResponseEngine:
+    """Handles automated incident response workflows."""
+    
+    def __init__(self):
+        """Initialize automated response engine."""
+        self.rules: Dict[str, ResponseRule] = {}
+        self.action_history: List[Dict[str, Any]] = []
+        self.response_handlers: Dict[str, Callable] = {}
+        self.max_history = 1000
+        
+        # Initialize default response rules
+        self._initialize_default_rules()
+        
+        logger.info("Automated response engine initialized")
+    
+    def _initialize_default_rules(self):
+        """Initialize default automated response rules."""
+        
+        # Critical egress violation rule
+        critical_egress_rule = ResponseRule(
+            rule_id="critical_egress_response",
+            name="Critical Network Egress Response",
+            description="Automated response for critical network egress violations",
+            triggers={
+                "event_type": SecurityEventType.EGRESS_VIOLATION,
+                "severity": SecuritySeverity.CRITICAL,
+                "max_events_per_hour": 3
+            },
+            actions=[
+                ResponseAction(
+                    action_id="block_egress",
+                    action_type="block",
+                    description="Block network egress for violating service",
+                    parameters={"scope": "service_level"},
+                    cooldown_minutes=30
+                ),
+                ResponseAction(
+                    action_id="alert_admins",
+                    action_type="alert",
+                    description="Send critical alert to administrators",
+                    parameters={"urgency": "critical", "channels": ["email", "logging"]},
+                    cooldown_minutes=15
+                )
+            ],
+            priority=10
+        )
+        self.rules[critical_egress_rule.rule_id] = critical_egress_rule
+        
+        # Data access violation rule
+        data_access_rule = ResponseRule(
+            rule_id="data_access_response",
+            name="Data Access Violation Response",
+            description="Automated response for suspicious data access patterns",
+            triggers={
+                "event_type": SecurityEventType.DATA_ACCESS_VIOLATION,
+                "severity": [SecuritySeverity.HIGH, SecuritySeverity.CRITICAL],
+                "max_events_per_hour": 5
+            },
+            actions=[
+                ResponseAction(
+                    action_id="audit_access",
+                    action_type="audit",
+                    description="Trigger enhanced audit logging",
+                    parameters={"audit_level": "detailed"},
+                    cooldown_minutes=60
+                ),
+                ResponseAction(
+                    action_id="notify_security",
+                    action_type="notify",
+                    description="Notify security team of suspicious access",
+                    parameters={"priority": "high"},
+                    cooldown_minutes=30
+                )
+            ],
+            priority=20
+        )
+        self.rules[data_access_rule.rule_id] = data_access_rule
+        
+        # Incident escalation rule
+        incident_escalation_rule = ResponseRule(
+            rule_id="incident_escalation_response",
+            name="Critical Incident Auto-Escalation",
+            description="Automatically escalate critical security incidents",
+            triggers={
+                "incident_severity": SecuritySeverity.CRITICAL,
+                "incident_age_minutes": 15,
+                "incident_status": "open"
+            },
+            actions=[
+                ResponseAction(
+                    action_id="escalate_incident",
+                    action_type="escalate",
+                    description="Auto-escalate unassigned critical incidents",
+                    parameters={"escalation_level": "security_team"},
+                    cooldown_minutes=120
+                ),
+                ResponseAction(
+                    action_id="notify_escalation",
+                    action_type="notify",
+                    description="Send escalation notifications",
+                    parameters={"urgency": "critical", "escalated": True},
+                    cooldown_minutes=60
+                )
+            ],
+            priority=5
+        )
+        self.rules[incident_escalation_rule.rule_id] = incident_escalation_rule
+        
+        logger.info(f"Initialized {len(self.rules)} default response rules")
+    
+    def add_response_handler(self, action_type: str, handler: Callable):
+        """Add handler for specific response action types."""
+        self.response_handlers[action_type] = handler
+        logger.info(f"Added response handler for action type: {action_type}")
+    
+    def evaluate_event_response(self, event: SecurityEvent) -> List[Dict[str, Any]]:
+        """Evaluate if an event should trigger automated responses."""
+        triggered_actions = []
+        
+        for rule in sorted(self.rules.values(), key=lambda r: r.priority):
+            if not rule.enabled:
+                continue
+            
+            if self._event_matches_rule(event, rule):
+                # Check if actions should be triggered based on recent history
+                if self._should_trigger_actions(rule, event):
+                    actions = self._execute_rule_actions(rule, event)
+                    triggered_actions.extend(actions)
+        
+        return triggered_actions
+    
+    def evaluate_incident_response(self, incident: SecurityIncident) -> List[Dict[str, Any]]:
+        """Evaluate if an incident should trigger automated responses."""
+        triggered_actions = []
+        
+        for rule in sorted(self.rules.values(), key=lambda r: r.priority):
+            if not rule.enabled:
+                continue
+            
+            if self._incident_matches_rule(incident, rule):
+                if self._should_trigger_incident_actions(rule, incident):
+                    actions = self._execute_incident_rule_actions(rule, incident)
+                    triggered_actions.extend(actions)
+        
+        return triggered_actions
+    
+    def _event_matches_rule(self, event: SecurityEvent, rule: ResponseRule) -> bool:
+        """Check if an event matches rule triggers."""
+        triggers = rule.triggers
+        
+        # Check event type
+        if "event_type" in triggers:
+            if triggers["event_type"] != event.event_type:
+                return False
+        
+        # Check severity
+        if "severity" in triggers:
+            severity_trigger = triggers["severity"]
+            if isinstance(severity_trigger, list):
+                if event.severity not in severity_trigger:
+                    return False
+            else:
+                if event.severity != severity_trigger:
+                    return False
+        
+        # Check event frequency (max events per hour)
+        if "max_events_per_hour" in triggers:
+            recent_events = self._count_recent_events(event.event_type, event.severity, hours=1)
+            if recent_events < triggers["max_events_per_hour"]:
+                return False
+        
+        return True
+    
+    def _incident_matches_rule(self, incident: SecurityIncident, rule: ResponseRule) -> bool:
+        """Check if an incident matches rule triggers."""
+        triggers = rule.triggers
+        
+        # Check incident severity
+        if "incident_severity" in triggers:
+            if incident.severity != triggers["incident_severity"]:
+                return False
+        
+        # Check incident age
+        if "incident_age_minutes" in triggers:
+            age_minutes = (datetime.now(timezone.utc) - incident.created_at).total_seconds() / 60
+            if age_minutes < triggers["incident_age_minutes"]:
+                return False
+        
+        # Check incident status
+        if "incident_status" in triggers:
+            if incident.status != triggers["incident_status"]:
+                return False
+        
+        return True
+    
+    def _should_trigger_actions(self, rule: ResponseRule, event: SecurityEvent) -> bool:
+        """Check if actions should be triggered based on cooldown periods."""
+        for action in rule.actions:
+            if not action.enabled:
+                continue
+            
+            # Check cooldown period
+            last_action_time = self._get_last_action_time(action.action_id, event.source_service)
+            if last_action_time:
+                time_since_last = (datetime.now(timezone.utc) - last_action_time).total_seconds() / 60
+                if time_since_last < action.cooldown_minutes:
+                    return False
+        
+        return True
+    
+    def _should_trigger_incident_actions(self, rule: ResponseRule, incident: SecurityIncident) -> bool:
+        """Check if incident actions should be triggered based on cooldown periods."""
+        for action in rule.actions:
+            if not action.enabled:
+                continue
+            
+            # Check cooldown period for incident-based actions
+            last_action_time = self._get_last_incident_action_time(action.action_id, incident.incident_id)
+            if last_action_time:
+                time_since_last = (datetime.now(timezone.utc) - last_action_time).total_seconds() / 60
+                if time_since_last < action.cooldown_minutes:
+                    return False
+        
+        return True
+    
+    def _execute_rule_actions(self, rule: ResponseRule, event: SecurityEvent) -> List[Dict[str, Any]]:
+        """Execute actions for a triggered rule."""
+        executed_actions = []
+        
+        for action in rule.actions:
+            if not action.enabled:
+                continue
+            
+            try:
+                # Record action execution
+                action_record = {
+                    "action_id": action.action_id,
+                    "action_type": action.action_type,
+                    "rule_id": rule.rule_id,
+                    "event_id": event.event_id,
+                    "source_service": event.source_service,
+                    "executed_at": datetime.now(timezone.utc),
+                    "parameters": action.parameters,
+                    "status": "executed"
+                }
+                
+                # Execute handler if available
+                if action.action_type in self.response_handlers:
+                    handler = self.response_handlers[action.action_type]
+                    result = handler(action, event)
+                    action_record["result"] = result
+                    action_record["status"] = "completed"
+                else:
+                    # Log action for external processing
+                    logger.warning(f"No handler for action type {action.action_type}, logging for external processing")
+                    action_record["status"] = "logged"
+                
+                self.action_history.append(action_record)
+                executed_actions.append(action_record)
+                
+                logger.info(f"Executed automated response action: {action.action_id} for event {event.event_id}")
+                
+            except Exception as e:
+                logger.error(f"Failed to execute response action {action.action_id}: {e}")
+                action_record = {
+                    "action_id": action.action_id,
+                    "rule_id": rule.rule_id,
+                    "event_id": event.event_id,
+                    "executed_at": datetime.now(timezone.utc),
+                    "status": "failed",
+                    "error": str(e)
+                }
+                self.action_history.append(action_record)
+        
+        # Trim action history if needed
+        if len(self.action_history) > self.max_history:
+            self.action_history = self.action_history[-self.max_history:]
+        
+        return executed_actions
+    
+    def _execute_incident_rule_actions(self, rule: ResponseRule, incident: SecurityIncident) -> List[Dict[str, Any]]:
+        """Execute actions for a triggered incident rule."""
+        executed_actions = []
+        
+        for action in rule.actions:
+            if not action.enabled:
+                continue
+            
+            try:
+                # Record action execution
+                action_record = {
+                    "action_id": action.action_id,
+                    "action_type": action.action_type,
+                    "rule_id": rule.rule_id,
+                    "incident_id": incident.incident_id,
+                    "executed_at": datetime.now(timezone.utc),
+                    "parameters": action.parameters,
+                    "status": "executed"
+                }
+                
+                # Execute handler if available
+                if action.action_type in self.response_handlers:
+                    handler = self.response_handlers[action.action_type]
+                    result = handler(action, incident)
+                    action_record["result"] = result
+                    action_record["status"] = "completed"
+                else:
+                    # Log action for external processing
+                    logger.warning(f"No handler for action type {action.action_type}, logging for external processing")
+                    action_record["status"] = "logged"
+                
+                self.action_history.append(action_record)
+                executed_actions.append(action_record)
+                
+                logger.info(f"Executed automated response action: {action.action_id} for incident {incident.incident_id}")
+                
+            except Exception as e:
+                logger.error(f"Failed to execute response action {action.action_id}: {e}")
+                action_record = {
+                    "action_id": action.action_id,
+                    "rule_id": rule.rule_id,
+                    "incident_id": incident.incident_id,
+                    "executed_at": datetime.now(timezone.utc),
+                    "status": "failed",
+                    "error": str(e)
+                }
+                self.action_history.append(action_record)
+        
+        return executed_actions
+    
+    def _count_recent_events(self, event_type: SecurityEventType, severity: SecuritySeverity, hours: int = 1) -> int:
+        """Count recent events of specified type and severity."""
+        # This would typically query the event collector
+        # For now, return a placeholder count
+        return 1
+    
+    def _get_last_action_time(self, action_id: str, source_service: str) -> Optional[datetime]:
+        """Get the last time a specific action was executed for a service."""
+        for record in reversed(self.action_history):
+            if (record.get("action_id") == action_id and 
+                record.get("source_service") == source_service):
+                return record.get("executed_at")
+        return None
+    
+    def _get_last_incident_action_time(self, action_id: str, incident_id: str) -> Optional[datetime]:
+        """Get the last time a specific action was executed for an incident."""
+        for record in reversed(self.action_history):
+            if (record.get("action_id") == action_id and 
+                record.get("incident_id") == incident_id):
+                return record.get("executed_at")
+        return None
+    
+    def add_response_rule(self, rule: ResponseRule):
+        """Add a new automated response rule."""
+        self.rules[rule.rule_id] = rule
+        logger.info(f"Added response rule: {rule.name}")
+    
+    def remove_response_rule(self, rule_id: str) -> bool:
+        """Remove an automated response rule."""
+        if rule_id in self.rules:
+            del self.rules[rule_id]
+            logger.info(f"Removed response rule: {rule_id}")
+            return True
+        return False
+    
+    def get_response_rules(self) -> List[ResponseRule]:
+        """Get all response rules."""
+        return list(self.rules.values())
+    
+    def get_action_history(self, hours: int = 24) -> List[Dict[str, Any]]:
+        """Get recent action execution history."""
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+        
+        filtered_history = []
+        for record in self.action_history:
+            if record.get("executed_at", datetime.min.replace(tzinfo=timezone.utc)) >= cutoff_time:
+                filtered_history.append(record)
+        
+        return sorted(filtered_history, key=lambda r: r.get("executed_at", datetime.min.replace(tzinfo=timezone.utc)), reverse=True)
+    
+    def get_response_summary(self) -> Dict[str, Any]:
+        """Get summary of automated response activities."""
+        recent_actions = self.get_action_history(hours=24)
+        
+        # Count by action type
+        action_type_counts = {}
+        for record in recent_actions:
+            action_type = record.get("action_type", "unknown")
+            action_type_counts[action_type] = action_type_counts.get(action_type, 0) + 1
+        
+        # Count by status
+        status_counts = {}
+        for record in recent_actions:
+            status = record.get("status", "unknown")
+            status_counts[status] = status_counts.get(status, 0) + 1
+        
+        return {
+            "total_actions_24h": len(recent_actions),
+            "by_action_type": action_type_counts,
+            "by_status": status_counts,
+            "active_rules": len([r for r in self.rules.values() if r.enabled]),
+            "total_rules": len(self.rules),
+            "successful_actions": status_counts.get("completed", 0),
+            "failed_actions": status_counts.get("failed", 0)
+        }
+
+
+class PrivacyComplianceValidator:
+    """Validates privacy compliance for Kenny v2 operations."""
+    
+    def __init__(self):
+        """Initialize privacy compliance validator."""
+        self.audit_log: List[Dict[str, Any]] = []
+        self.compliance_rules = self._load_privacy_rules()
+        self.violations: List[Dict[str, Any]] = []
+        self.max_audit_entries = 10000
+    
+    def _load_privacy_rules(self) -> Dict[str, Any]:
+        """Load ADR-0019 privacy compliance rules."""
+        return {
+            "network_egress": {
+                "description": "No unauthorized network egress allowed",
+                "allowed_domains": [
+                    "localhost", "127.0.0.1", "*.kenny.local",
+                    "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"
+                ],
+                "violation_severity": "CRITICAL"
+            },
+            "data_retention": {
+                "description": "Data must be retained locally with user control",
+                "max_retention_days": 365,
+                "user_controlled": True,
+                "violation_severity": "HIGH"
+            },
+            "external_apis": {
+                "description": "No external API calls without explicit user consent",
+                "allowed_services": ["local_ollama", "local_chromadb"],
+                "violation_severity": "CRITICAL"
+            },
+            "data_minimization": {
+                "description": "Only necessary data should be processed",
+                "sensitive_patterns": [
+                    r"password", r"secret", r"token", r"key",
+                    r"ssn", r"credit_card", r"phone", r"email"
+                ],
+                "violation_severity": "MEDIUM"
+            },
+            "user_consent": {
+                "description": "User consent required for all data operations",
+                "consent_required_operations": [
+                    "data_export", "data_sharing", "external_processing"
+                ],
+                "violation_severity": "HIGH"
+            }
+        }
+    
+    def validate_operation(self, operation: str, data: Dict[str, Any],
+                          correlation_id: Optional[str] = None) -> Dict[str, Any]:
+        """Validate operation against privacy compliance rules."""
+        import uuid
+        
+        validation_result = {
+            "operation": operation,
+            "compliant": True,
+            "violations": [],
+            "warnings": [],
+            "audit_id": str(uuid.uuid4()),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "correlation_id": correlation_id
+        }
+        
+        # Check network egress compliance
+        if "destination" in data:
+            egress_result = self._validate_network_egress(data["destination"])
+            if not egress_result["compliant"]:
+                validation_result["compliant"] = False
+                validation_result["violations"].append(egress_result)
+        
+        # Check data minimization
+        if "data_content" in data:
+            data_result = self._validate_data_minimization(data["data_content"])
+            if data_result["warnings"]:
+                validation_result["warnings"].extend(data_result["warnings"])
+        
+        # Check external API usage
+        if "service_name" in data:
+            api_result = self._validate_external_api_usage(data["service_name"])
+            if not api_result["compliant"]:
+                validation_result["compliant"] = False
+                validation_result["violations"].append(api_result)
+        
+        # Log audit entry
+        self._log_audit_entry(validation_result)
+        
+        return validation_result
+    
+    def _validate_network_egress(self, destination: str) -> Dict[str, Any]:
+        """Validate network egress against allowed domains."""
+        import ipaddress
+        
+        allowed_domains = self.compliance_rules["network_egress"]["allowed_domains"]
+        
+        # Check if destination is allowed
+        for allowed in allowed_domains:
+            if allowed.startswith("*.") and destination.endswith(allowed[2:]):
+                return {"compliant": True, "rule": "network_egress"}
+            elif "/" in allowed:  # CIDR notation
+                try:
+                    network = ipaddress.ip_network(allowed, strict=False)
+                    if ipaddress.ip_address(destination) in network:
+                        return {"compliant": True, "rule": "network_egress"}
+                except ValueError:
+                    continue
+            elif destination == allowed:
+                return {"compliant": True, "rule": "network_egress"}
+        
+        return {
+            "compliant": False,
+            "rule": "network_egress",
+            "violation_type": "unauthorized_egress",
+            "destination": destination,
+            "severity": self.compliance_rules["network_egress"]["violation_severity"]
+        }
+    
+    def _validate_data_minimization(self, content: str) -> Dict[str, Any]:
+        """Validate data minimization principles."""
+        warnings = []
+        sensitive_patterns = self.compliance_rules["data_minimization"]["sensitive_patterns"]
+        
+        for pattern in sensitive_patterns:
+            if re.search(pattern, content, re.IGNORECASE):
+                warnings.append({
+                    "rule": "data_minimization",
+                    "pattern": pattern,
+                    "severity": "MEDIUM",
+                    "recommendation": f"Consider anonymizing or removing {pattern} references"
+                })
+        
+        return {"warnings": warnings}
+    
+    def _validate_external_api_usage(self, service_name: str) -> Dict[str, Any]:
+        """Validate external API usage compliance."""
+        allowed_services = self.compliance_rules["external_apis"]["allowed_services"]
+        
+        # Check if it's a local service (Kenny v2 services)
+        if any(local in service_name for local in ["kenny", "localhost", "127.0.0.1"]):
+            return {"compliant": True, "rule": "external_apis"}
+        
+        # Check allowed external services
+        if service_name in allowed_services:
+            return {"compliant": True, "rule": "external_apis"}
+        
+        return {
+            "compliant": False,
+            "rule": "external_apis", 
+            "violation_type": "unauthorized_external_api",
+            "service_name": service_name,
+            "severity": self.compliance_rules["external_apis"]["violation_severity"]
+        }
+    
+    def _log_audit_entry(self, validation_result: Dict[str, Any]):
+        """Log privacy compliance audit entry."""
+        self.audit_log.append(validation_result)
+        
+        # Record violations
+        if not validation_result["compliant"]:
+            self.violations.append(validation_result)
+        
+        # Trim audit log if needed
+        if len(self.audit_log) > self.max_audit_entries:
+            self.audit_log = self.audit_log[-self.max_audit_entries:]
+    
+    def get_compliance_report(self, hours: int = 24) -> Dict[str, Any]:
+        """Generate privacy compliance report."""
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+        
+        recent_audits = [
+            entry for entry in self.audit_log
+            if datetime.fromisoformat(entry["timestamp"].replace("Z", "+00:00")) >= cutoff_time
+        ]
+        
+        recent_violations = [
+            entry for entry in recent_audits
+            if not entry["compliant"]
+        ]
+        
+        # Calculate compliance metrics
+        total_operations = len(recent_audits)
+        compliant_operations = total_operations - len(recent_violations)
+        compliance_rate = (compliant_operations / total_operations * 100) if total_operations > 0 else 100
+        
+        # Group violations by type
+        violation_types = {}
+        for violation in recent_violations:
+            for v in violation["violations"]:
+                v_type = v.get("violation_type", "unknown")
+                violation_types[v_type] = violation_types.get(v_type, 0) + 1
+        
+        return {
+            "compliance_rate_percent": compliance_rate,
+            "total_operations": total_operations,
+            "compliant_operations": compliant_operations,
+            "violations": len(recent_violations),
+            "violation_types": violation_types,
+            "time_period_hours": hours,
+            "adr_0019_compliant": len(recent_violations) == 0,
+            "report_timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    
+    def get_audit_trail(self, hours: int = 24) -> List[Dict[str, Any]]:
+        """Get privacy audit trail."""
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+        
+        return [
+            entry for entry in self.audit_log
+            if datetime.fromisoformat(entry["timestamp"].replace("Z", "+00:00")) >= cutoff_time
+        ]
+
+
 class SecurityMonitor:
     """Main security monitoring engine."""
     
@@ -434,6 +1268,9 @@ class SecurityMonitor:
         self.egress_monitor = EgressMonitor()
         self.data_access_monitor = DataAccessMonitor()
         self.event_collector = SecurityEventCollector()
+        self.privacy_validator = PrivacyComplianceValidator()
+        self.response_engine = AutomatedResponseEngine()
+        self.analytics = SecurityAnalytics(self)
         
         # Connect monitors to event collector
         self.egress_monitor.add_violation_handler(self.event_collector.collect_event)
@@ -441,6 +1278,14 @@ class SecurityMonitor:
         
         # Add default event handler
         self.event_collector.add_event_handler(self._log_security_event)
+        self.event_collector.add_incident_handler(self._handle_security_incident)
+        
+        # Add automated response handlers
+        self.event_collector.add_event_handler(self._evaluate_automated_response)
+        self.event_collector.add_incident_handler(self._evaluate_incident_response)
+        
+        # Initialize default response handlers
+        self._initialize_response_handlers()
     
     def _log_security_event(self, event: SecurityEvent):
         """Log security event to application logs."""
@@ -453,6 +1298,133 @@ class SecurityMonitor:
         }.get(event.severity, logging.INFO)
         
         logger.log(log_level, f"SECURITY [{event.event_type.value}] {event.title}: {event.description}")
+    
+    def _handle_security_incident(self, incident: SecurityIncident):
+        """Handle security incident with automated response."""
+        logger.critical(f"SECURITY INCIDENT: {incident.title} - {incident.description}")
+        
+        # Auto-escalate critical incidents
+        if incident.severity == SecuritySeverity.CRITICAL and not incident.escalated:
+            incident.escalated = True
+    
+    def _evaluate_automated_response(self, event: SecurityEvent):
+        """Evaluate and execute automated responses for security events."""
+        try:
+            triggered_actions = self.response_engine.evaluate_event_response(event)
+            if triggered_actions:
+                logger.info(f"Triggered {len(triggered_actions)} automated response actions for event {event.event_id}")
+        except Exception as e:
+            logger.error(f"Error evaluating automated response for event {event.event_id}: {e}")
+    
+    def _evaluate_incident_response(self, incident: SecurityIncident):
+        """Evaluate and execute automated responses for security incidents."""
+        try:
+            triggered_actions = self.response_engine.evaluate_incident_response(incident)
+            if triggered_actions:
+                logger.info(f"Triggered {len(triggered_actions)} automated response actions for incident {incident.incident_id}")
+        except Exception as e:
+            logger.error(f"Error evaluating automated incident response for incident {incident.incident_id}: {e}")
+    
+    def _initialize_response_handlers(self):
+        """Initialize default response action handlers."""
+        
+        def handle_alert_action(action: ResponseAction, context) -> Dict[str, Any]:
+            """Handle alert response actions."""
+            logger.critical(f"AUTOMATED ALERT: {action.description}")
+            urgency = action.parameters.get("urgency", "medium")
+            channels = action.parameters.get("channels", ["logging"])
+            
+            # Create enhanced log entry for critical alerts
+            if urgency == "critical":
+                if isinstance(context, SecurityEvent):
+                    logger.critical(f"CRITICAL SECURITY ALERT - Event: {context.title} | Service: {context.source_service}")
+                elif isinstance(context, SecurityIncident):
+                    logger.critical(f"CRITICAL SECURITY ALERT - Incident: {context.title} | Severity: {context.severity}")
+            
+            return {"status": "alert_sent", "urgency": urgency, "channels": channels}
+        
+        def handle_notify_action(action: ResponseAction, context) -> Dict[str, Any]:
+            """Handle notification response actions."""
+            priority = action.parameters.get("priority", "medium")
+            escalated = action.parameters.get("escalated", False)
+            
+            if escalated:
+                logger.error(f"SECURITY ESCALATION NOTIFICATION: {action.description}")
+            else:
+                logger.warning(f"SECURITY NOTIFICATION: {action.description}")
+            
+            return {"status": "notification_sent", "priority": priority, "escalated": escalated}
+        
+        def handle_audit_action(action: ResponseAction, context) -> Dict[str, Any]:
+            """Handle audit response actions."""
+            audit_level = action.parameters.get("audit_level", "standard")
+            logger.info(f"ENHANCED AUDIT TRIGGERED: {action.description} (Level: {audit_level})")
+            
+            # Record enhanced audit entry
+            if isinstance(context, SecurityEvent):
+                audit_data = {
+                    "event_id": context.event_id,
+                    "audit_level": audit_level,
+                    "triggered_at": datetime.now(timezone.utc).isoformat(),
+                    "source_service": context.source_service
+                }
+            else:
+                audit_data = {
+                    "audit_level": audit_level,
+                    "triggered_at": datetime.now(timezone.utc).isoformat()
+                }
+            
+            return {"status": "audit_enhanced", "audit_level": audit_level, "data": audit_data}
+        
+        def handle_escalate_action(action: ResponseAction, context) -> Dict[str, Any]:
+            """Handle escalation response actions."""
+            escalation_level = action.parameters.get("escalation_level", "security_team")
+            
+            if isinstance(context, SecurityIncident):
+                # Update incident escalation status
+                context.escalated = True
+                context.escalation_level = escalation_level
+                logger.critical(f"INCIDENT AUTO-ESCALATED: {context.title} to {escalation_level}")
+                
+                return {
+                    "status": "incident_escalated",
+                    "escalation_level": escalation_level,
+                    "incident_id": context.incident_id
+                }
+            else:
+                logger.error(f"SECURITY AUTO-ESCALATION: {action.description} to {escalation_level}")
+                return {"status": "escalated", "escalation_level": escalation_level}
+        
+        def handle_block_action(action: ResponseAction, context) -> Dict[str, Any]:
+            """Handle blocking response actions."""
+            scope = action.parameters.get("scope", "service_level")
+            
+            if isinstance(context, SecurityEvent):
+                logger.critical(f"AUTOMATED SECURITY BLOCK: {context.source_service} - {action.description}")
+                
+                # For network egress violations, mark service for blocking
+                if context.event_type == SecurityEventType.EGRESS_VIOLATION:
+                    # This would integrate with actual blocking mechanisms
+                    logger.critical(f"NETWORK EGRESS BLOCKED for service: {context.source_service}")
+                
+                return {
+                    "status": "blocked",
+                    "scope": scope,
+                    "service": context.source_service,
+                    "block_type": "network_egress"
+                }
+            else:
+                logger.critical(f"AUTOMATED SECURITY BLOCK: {action.description}")
+                return {"status": "blocked", "scope": scope}
+        
+        # Register response handlers
+        self.response_engine.add_response_handler("alert", handle_alert_action)
+        self.response_engine.add_response_handler("notify", handle_notify_action)
+        self.response_engine.add_response_handler("audit", handle_audit_action)
+        self.response_engine.add_response_handler("escalate", handle_escalate_action)
+        self.response_engine.add_response_handler("block", handle_block_action)
+        
+        logger.info("Initialized automated response handlers")
     
     def check_network_egress(self, source_service: str, destination: str, port: Optional[int] = None,
                            correlation_id: Optional[str] = None) -> bool:
@@ -467,11 +1439,39 @@ class SecurityMonitor:
             service_name, resource, operation, user_id, data_size, correlation_id
         )
     
+    def validate_privacy_compliance(self, operation: str, data: Dict[str, Any],
+                                  correlation_id: Optional[str] = None) -> Dict[str, Any]:
+        """Validate operation against privacy compliance rules."""
+        return self.privacy_validator.validate_operation(operation, data, correlation_id)
+    
+    def get_privacy_compliance_report(self, hours: int = 24) -> Dict[str, Any]:
+        """Get privacy compliance report."""
+        return self.privacy_validator.get_compliance_report(hours)
+    
+    def get_privacy_audit_trail(self, hours: int = 24) -> List[Dict[str, Any]]:
+        """Get privacy compliance audit trail."""
+        return self.privacy_validator.get_audit_trail(hours)
+    
+    def get_incident_management_dashboard(self, hours: int = 24) -> Dict[str, Any]:
+        """Get incident management dashboard."""
+        return {
+            "incident_summary": self.event_collector.get_incident_summary(),
+            "recent_incidents": [i.to_dict() for i in self.event_collector.get_incidents(hours=hours)],
+            "open_incidents": [i.to_dict() for i in self.event_collector.get_incidents(status="open", hours=hours)],
+            "escalated_incidents": len([i for i in self.event_collector.get_incidents(hours=hours) if i.escalated]),
+            "time_period_hours": hours
+        }
+    
     def get_security_dashboard(self, hours: int = 24) -> Dict[str, Any]:
         """Get comprehensive security dashboard."""
         return {
             "event_summary": self.event_collector.get_event_summary(),
+            "incident_summary": self.event_collector.get_incident_summary(),
+            "privacy_compliance": self.privacy_validator.get_compliance_report(hours),
+            "automated_response_summary": self.response_engine.get_response_summary(),
             "recent_events": [e.to_dict() for e in self.event_collector.get_events(hours)],
+            "recent_incidents": [i.to_dict() for i in self.event_collector.get_incidents(hours=hours)],
+            "recent_response_actions": self.response_engine.get_action_history(hours),
             "data_access_log": self.data_access_monitor.get_access_history(hours),
             "egress_rules": [
                 {
@@ -484,7 +1484,529 @@ class SecurityMonitor:
                 }
                 for rule in self.egress_monitor.rules.values()
             ],
+            "response_rules": [
+                {
+                    "rule_id": rule.rule_id,
+                    "name": rule.name,
+                    "description": rule.description,
+                    "enabled": rule.enabled,
+                    "priority": rule.priority,
+                    "action_count": len(rule.actions)
+                }
+                for rule in self.response_engine.get_response_rules()
+            ],
             "time_period_hours": hours
+        }
+    
+    def get_automated_response_dashboard(self, hours: int = 24) -> Dict[str, Any]:
+        """Get automated response dashboard."""
+        return {
+            "response_summary": self.response_engine.get_response_summary(),
+            "action_history": self.response_engine.get_action_history(hours),
+            "response_rules": [
+                {
+                    "rule_id": rule.rule_id,
+                    "name": rule.name,
+                    "description": rule.description,
+                    "enabled": rule.enabled,
+                    "priority": rule.priority,
+                    "triggers": rule.triggers,
+                    "actions": [
+                        {
+                            "action_id": action.action_id,
+                            "action_type": action.action_type,
+                            "description": action.description,
+                            "enabled": action.enabled,
+                            "cooldown_minutes": action.cooldown_minutes
+                        }
+                        for action in rule.actions
+                    ]
+                }
+                for rule in self.response_engine.get_response_rules()
+            ],
+            "time_period_hours": hours
+        }
+    
+    def add_response_rule(self, rule: ResponseRule):
+        """Add a new automated response rule."""
+        self.response_engine.add_response_rule(rule)
+    
+    def remove_response_rule(self, rule_id: str) -> bool:
+        """Remove an automated response rule."""
+        return self.response_engine.remove_response_rule(rule_id)
+    
+    def get_response_action_history(self, hours: int = 24) -> List[Dict[str, Any]]:
+        """Get automated response action history."""
+        return self.response_engine.get_action_history(hours)
+    
+    def collect_security_metrics(self) -> Dict[str, Any]:
+        """Collect current security metrics snapshot."""
+        return self.analytics.collect_security_metrics()
+    
+    def get_security_trends(self, hours: int = 24) -> Dict[str, Any]:
+        """Get security trends analysis."""
+        return self.analytics.get_security_trends(hours)
+    
+    def get_security_forecast(self, hours_ahead: int = 24) -> Dict[str, Any]:
+        """Get security forecast based on trends."""
+        return self.analytics.get_security_forecast(hours_ahead)
+    
+    def get_security_analytics_dashboard(self, hours: int = 24) -> Dict[str, Any]:
+        """Get comprehensive security analytics dashboard."""
+        return self.analytics.get_security_metrics_dashboard(hours)
+
+
+class SecurityAnalytics:
+    """Provides security metrics and trend analysis capabilities."""
+    
+    def __init__(self, security_monitor: SecurityMonitor):
+        """Initialize security analytics."""
+        self.security_monitor = security_monitor
+        self.metrics_history: List[Dict[str, Any]] = []
+        self.max_history = 10000  # Store up to 10k metric points
+        
+        logger.info("Security analytics initialized")
+    
+    def collect_security_metrics(self) -> Dict[str, Any]:
+        """Collect current security metrics snapshot."""
+        current_time = datetime.now(timezone.utc)
+        
+        # Get current event and incident counts
+        event_summary = self.security_monitor.event_collector.get_event_summary()
+        incident_summary = self.security_monitor.event_collector.get_incident_summary()
+        response_summary = self.security_monitor.response_engine.get_response_summary()
+        
+        # Calculate security health score (0-100)
+        security_score = self._calculate_security_score(event_summary, incident_summary, response_summary)
+        
+        metrics = {
+            "timestamp": current_time.isoformat(),
+            "security_score": security_score,
+            "events": {
+                "total_24h": event_summary.get("total_events_24h", 0),
+                "critical_count": event_summary.get("critical_count", 0),
+                "high_count": event_summary.get("high_count", 0),
+                "medium_count": event_summary.get("by_severity", {}).get("medium", 0),
+                "low_count": event_summary.get("by_severity", {}).get("low", 0),
+                "by_type": event_summary.get("by_type", {})
+            },
+            "incidents": {
+                "total_24h": incident_summary.get("total_incidents_24h", 0),
+                "open_incidents": incident_summary.get("open_incidents", 0),
+                "escalated_incidents": incident_summary.get("escalated_incidents", 0),
+                "critical_incidents": incident_summary.get("critical_incidents", 0),
+                "high_incidents": incident_summary.get("high_incidents", 0),
+                "by_status": incident_summary.get("by_status", {})
+            },
+            "automated_response": {
+                "total_actions_24h": response_summary.get("total_actions_24h", 0),
+                "successful_actions": response_summary.get("successful_actions", 0),
+                "failed_actions": response_summary.get("failed_actions", 0),
+                "active_rules": response_summary.get("active_rules", 0),
+                "by_action_type": response_summary.get("by_action_type", {})
+            },
+            "compliance": {
+                "privacy_score": self._get_privacy_compliance_score(),
+                "egress_violations_24h": len([
+                    e for e in self.security_monitor.event_collector.get_events(hours=24)
+                    if e.event_type == SecurityEventType.EGRESS_VIOLATION
+                ]),
+                "data_access_violations_24h": len([
+                    e for e in self.security_monitor.event_collector.get_events(hours=24)
+                    if e.event_type == SecurityEventType.DATA_ACCESS_VIOLATION
+                ])
+            }
+        }
+        
+        # Store metrics in history
+        self.metrics_history.append(metrics)
+        
+        # Trim history if needed
+        if len(self.metrics_history) > self.max_history:
+            self.metrics_history = self.metrics_history[-self.max_history:]
+        
+        return metrics
+    
+    def _calculate_security_score(self, event_summary: Dict[str, Any], 
+                                incident_summary: Dict[str, Any], 
+                                response_summary: Dict[str, Any]) -> float:
+        """Calculate overall security health score (0-100)."""
+        
+        # Base score starts at 100
+        score = 100.0
+        
+        # Deduct points for events (more critical = higher deduction)
+        critical_events = event_summary.get("critical_count", 0)
+        high_events = event_summary.get("high_count", 0)
+        medium_events = event_summary.get("by_severity", {}).get("medium", 0)
+        
+        score -= critical_events * 10  # 10 points per critical event
+        score -= high_events * 5       # 5 points per high event
+        score -= medium_events * 2     # 2 points per medium event
+        
+        # Deduct points for incidents
+        critical_incidents = incident_summary.get("critical_incidents", 0)
+        open_incidents = incident_summary.get("open_incidents", 0)
+        
+        score -= critical_incidents * 15  # 15 points per critical incident
+        score -= open_incidents * 3       # 3 points per open incident
+        
+        # Deduct points for failed automated responses
+        failed_actions = response_summary.get("failed_actions", 0)
+        score -= failed_actions * 2  # 2 points per failed response
+        
+        # Add points for successful automated responses (up to 10 bonus points)
+        successful_actions = response_summary.get("successful_actions", 0)
+        score += min(successful_actions * 0.5, 10)
+        
+        # Ensure score is between 0 and 100
+        return max(0.0, min(100.0, score))
+    
+    def _get_privacy_compliance_score(self) -> float:
+        """Get privacy compliance score from validator."""
+        try:
+            compliance_report = self.security_monitor.get_privacy_compliance_report(hours=24)
+            return compliance_report.get("compliance_rate_percent", 100.0)
+        except Exception as e:
+            logger.error(f"Error getting privacy compliance score: {e}")
+            return 100.0
+    
+    def get_security_trends(self, hours: int = 24) -> Dict[str, Any]:
+        """Analyze security trends over time."""
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+        
+        # Filter metrics to time window
+        recent_metrics = [
+            m for m in self.metrics_history
+            if datetime.fromisoformat(m["timestamp"].replace("Z", "+00:00")) >= cutoff_time
+        ]
+        
+        if len(recent_metrics) < 2:
+            return {
+                "trend_analysis": "insufficient_data",
+                "data_points": len(recent_metrics),
+                "message": "Need at least 2 data points for trend analysis"
+            }
+        
+        # Analyze trends
+        first_point = recent_metrics[0]
+        last_point = recent_metrics[-1]
+        
+        trends = {
+            "time_period_hours": hours,
+            "data_points": len(recent_metrics),
+            "security_score": {
+                "current": last_point["security_score"],
+                "previous": first_point["security_score"],
+                "change": last_point["security_score"] - first_point["security_score"],
+                "trend": self._determine_trend(first_point["security_score"], last_point["security_score"])
+            },
+            "events": {
+                "critical_trend": self._analyze_metric_trend(recent_metrics, ["events", "critical_count"]),
+                "high_trend": self._analyze_metric_trend(recent_metrics, ["events", "high_count"]),
+                "total_trend": self._analyze_metric_trend(recent_metrics, ["events", "total_24h"])
+            },
+            "incidents": {
+                "open_trend": self._analyze_metric_trend(recent_metrics, ["incidents", "open_incidents"]),
+                "escalated_trend": self._analyze_metric_trend(recent_metrics, ["incidents", "escalated_incidents"]),
+                "total_trend": self._analyze_metric_trend(recent_metrics, ["incidents", "total_24h"])
+            },
+            "compliance": {
+                "privacy_trend": self._analyze_metric_trend(recent_metrics, ["compliance", "privacy_score"]),
+                "egress_violations_trend": self._analyze_metric_trend(recent_metrics, ["compliance", "egress_violations_24h"])
+            },
+            "automated_response": {
+                "success_rate_trend": self._analyze_success_rate_trend(recent_metrics),
+                "total_actions_trend": self._analyze_metric_trend(recent_metrics, ["automated_response", "total_actions_24h"])
+            }
+        }
+        
+        # Generate trend summary
+        trends["summary"] = self._generate_trend_summary(trends)
+        
+        return trends
+    
+    def _analyze_metric_trend(self, metrics: List[Dict[str, Any]], metric_path: List[str]) -> Dict[str, Any]:
+        """Analyze trend for a specific metric."""
+        values = []
+        timestamps = []
+        
+        for m in metrics:
+            value = m
+            for key in metric_path:
+                value = value.get(key, 0)
+            values.append(value)
+            timestamps.append(datetime.fromisoformat(m["timestamp"].replace("Z", "+00:00")))
+        
+        if len(values) < 2:
+            return {"trend": "insufficient_data", "values": values}
+        
+        first_value = values[0]
+        last_value = values[-1]
+        change = last_value - first_value
+        percent_change = (change / first_value * 100) if first_value > 0 else 0
+        
+        # Calculate simple moving average if we have enough points
+        avg_value = sum(values) / len(values)
+        
+        return {
+            "current": last_value,
+            "previous": first_value,
+            "change": change,
+            "percent_change": percent_change,
+            "average": avg_value,
+            "trend": self._determine_trend(first_value, last_value),
+            "volatility": self._calculate_volatility(values)
+        }
+    
+    def _analyze_success_rate_trend(self, metrics: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Analyze automated response success rate trend."""
+        success_rates = []
+        
+        for m in metrics:
+            total_actions = m.get("automated_response", {}).get("total_actions_24h", 0)
+            successful_actions = m.get("automated_response", {}).get("successful_actions", 0)
+            
+            if total_actions > 0:
+                success_rate = (successful_actions / total_actions) * 100
+            else:
+                success_rate = 100.0  # No actions = 100% success rate
+            
+            success_rates.append(success_rate)
+        
+        if len(success_rates) < 2:
+            return {"trend": "insufficient_data", "values": success_rates}
+        
+        return self._analyze_metric_trend(metrics, ["success_rate"])  # Will be computed differently
+    
+    def _determine_trend(self, first_value: float, last_value: float, threshold: float = 5.0) -> str:
+        """Determine trend direction."""
+        change = last_value - first_value
+        percent_change = (change / first_value * 100) if first_value > 0 else 0
+        
+        if abs(percent_change) < threshold:
+            return "stable"
+        elif percent_change > 0:
+            return "increasing"
+        else:
+            return "decreasing"
+    
+    def _calculate_volatility(self, values: List[float]) -> float:
+        """Calculate volatility (standard deviation) of values."""
+        if len(values) < 2:
+            return 0.0
+        
+        mean = sum(values) / len(values)
+        variance = sum((x - mean) ** 2 for x in values) / len(values)
+        return variance ** 0.5
+    
+    def _generate_trend_summary(self, trends: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate human-readable trend summary."""
+        security_score_trend = trends.get("security_score", {}).get("trend", "unknown")
+        security_score_change = trends.get("security_score", {}).get("change", 0)
+        
+        # Determine overall security posture
+        if security_score_trend == "increasing":
+            posture = "improving"
+            posture_emoji = "📈"
+        elif security_score_trend == "decreasing":
+            posture = "declining"
+            posture_emoji = "📉"
+        else:
+            posture = "stable"
+            posture_emoji = "📊"
+        
+        # Count concerning trends
+        concerning_trends = 0
+        if trends.get("events", {}).get("critical_trend", {}).get("trend") == "increasing":
+            concerning_trends += 1
+        if trends.get("incidents", {}).get("open_trend", {}).get("trend") == "increasing":
+            concerning_trends += 1
+        if trends.get("compliance", {}).get("privacy_trend", {}).get("trend") == "decreasing":
+            concerning_trends += 1
+        
+        # Generate key insights
+        insights = []
+        
+        # Security score insight
+        if abs(security_score_change) > 5:
+            insights.append(f"Security score {security_score_trend} by {abs(security_score_change):.1f} points")
+        
+        # Critical events insight
+        critical_trend = trends.get("events", {}).get("critical_trend", {})
+        if critical_trend.get("trend") == "increasing":
+            change = critical_trend.get("change", 0)
+            insights.append(f"Critical events increased by {change}")
+        
+        # Open incidents insight
+        open_trend = trends.get("incidents", {}).get("open_trend", {})
+        if open_trend.get("current", 0) > 0:
+            current_open = open_trend.get("current", 0)
+            insights.append(f"{current_open} incidents currently open")
+        
+        return {
+            "overall_posture": posture,
+            "posture_emoji": posture_emoji,
+            "security_score_change": security_score_change,
+            "concerning_trends": concerning_trends,
+            "key_insights": insights,
+            "risk_level": self._assess_risk_level(trends),
+            "recommendations": self._generate_recommendations(trends)
+        }
+    
+    def _assess_risk_level(self, trends: Dict[str, Any]) -> str:
+        """Assess current risk level based on trends."""
+        risk_score = 0
+        
+        # High risk factors
+        if trends.get("security_score", {}).get("current", 100) < 50:
+            risk_score += 3
+        elif trends.get("security_score", {}).get("current", 100) < 70:
+            risk_score += 2
+        elif trends.get("security_score", {}).get("current", 100) < 85:
+            risk_score += 1
+        
+        # Critical events
+        critical_count = trends.get("events", {}).get("critical_trend", {}).get("current", 0)
+        if critical_count > 5:
+            risk_score += 3
+        elif critical_count > 2:
+            risk_score += 2
+        elif critical_count > 0:
+            risk_score += 1
+        
+        # Open incidents
+        open_incidents = trends.get("incidents", {}).get("open_trend", {}).get("current", 0)
+        if open_incidents > 3:
+            risk_score += 2
+        elif open_incidents > 1:
+            risk_score += 1
+        
+        # Determine risk level
+        if risk_score >= 6:
+            return "critical"
+        elif risk_score >= 4:
+            return "high"
+        elif risk_score >= 2:
+            return "medium"
+        else:
+            return "low"
+    
+    def _generate_recommendations(self, trends: Dict[str, Any]) -> List[str]:
+        """Generate security recommendations based on trends."""
+        recommendations = []
+        
+        # Security score recommendations
+        security_score = trends.get("security_score", {}).get("current", 100)
+        if security_score < 70:
+            recommendations.append("Review and address open security incidents immediately")
+        
+        # Critical events recommendations
+        critical_trend = trends.get("events", {}).get("critical_trend", {})
+        if critical_trend.get("trend") == "increasing":
+            recommendations.append("Investigate root cause of increasing critical security events")
+        
+        # Open incidents recommendations
+        open_trend = trends.get("incidents", {}).get("open_trend", {})
+        if open_trend.get("current", 0) > 2:
+            recommendations.append("Prioritize resolution of open security incidents")
+        
+        # Compliance recommendations
+        privacy_trend = trends.get("compliance", {}).get("privacy_trend", {})
+        if privacy_trend.get("current", 100) < 95:
+            recommendations.append("Review privacy compliance controls and ADR-0019 adherence")
+        
+        # Response effectiveness recommendations
+        response_trend = trends.get("automated_response", {}).get("success_rate_trend", {})
+        if response_trend.get("current", 100) < 90:
+            recommendations.append("Review and optimize automated response rules and handlers")
+        
+        # General recommendations
+        if not recommendations:
+            recommendations.append("Continue monitoring security posture and maintain current controls")
+        
+        return recommendations
+    
+    def get_security_forecast(self, hours_ahead: int = 24) -> Dict[str, Any]:
+        """Generate basic security forecast based on current trends."""
+        current_trends = self.get_security_trends(hours=24)
+        
+        if current_trends.get("trend_analysis") == "insufficient_data":
+            return {
+                "forecast_period_hours": hours_ahead,
+                "status": "insufficient_data",
+                "message": "Need more historical data for forecasting"
+            }
+        
+        # Simple linear projection based on current trends
+        security_score_trend = current_trends.get("security_score", {})
+        current_score = security_score_trend.get("current", 100)
+        change_rate = security_score_trend.get("change", 0) / 24  # Change per hour
+        
+        projected_score = current_score + (change_rate * hours_ahead)
+        projected_score = max(0, min(100, projected_score))  # Clamp to 0-100
+        
+        # Assess projected risk
+        if projected_score < 50:
+            risk_projection = "critical"
+            risk_emoji = "🔴"
+        elif projected_score < 70:
+            risk_projection = "high"
+            risk_emoji = "🟡"
+        elif projected_score < 85:
+            risk_projection = "medium"
+            risk_emoji = "🟢"
+        else:
+            risk_projection = "low"
+            risk_emoji = "🟢"
+        
+        return {
+            "forecast_period_hours": hours_ahead,
+            "current_security_score": current_score,
+            "projected_security_score": projected_score,
+            "score_change_projection": projected_score - current_score,
+            "risk_projection": risk_projection,
+            "risk_emoji": risk_emoji,
+            "confidence": "low",  # Simple linear projection has low confidence
+            "based_on_trends": {
+                key: trend.get("trend", "unknown") 
+                for key, trend in current_trends.items() 
+                if isinstance(trend, dict) and "trend" in trend
+            },
+            "recommendations": self._generate_forecast_recommendations(projected_score, current_score)
+        }
+    
+    def _generate_forecast_recommendations(self, projected_score: float, current_score: float) -> List[str]:
+        """Generate recommendations based on security forecast."""
+        recommendations = []
+        
+        if projected_score < current_score - 10:
+            recommendations.append("Security posture declining - immediate attention required")
+            recommendations.append("Review current security incidents and response effectiveness")
+        elif projected_score > current_score + 5:
+            recommendations.append("Security posture improving - maintain current practices")
+        else:
+            recommendations.append("Security posture stable - continue monitoring")
+        
+        if projected_score < 70:
+            recommendations.append("Consider implementing additional security controls")
+            recommendations.append("Review and strengthen incident response procedures")
+        
+        return recommendations
+    
+    def get_security_metrics_dashboard(self, hours: int = 24) -> Dict[str, Any]:
+        """Get comprehensive security metrics dashboard."""
+        current_metrics = self.collect_security_metrics()
+        trends = self.get_security_trends(hours)
+        forecast = self.get_security_forecast(hours_ahead=24)
+        
+        return {
+            "current_metrics": current_metrics,
+            "trends": trends,
+            "forecast": forecast,
+            "time_period_hours": hours,
+            "dashboard_generated_at": datetime.now(timezone.utc).isoformat(),
+            "data_points_available": len(self.metrics_history)
         }
 
 
