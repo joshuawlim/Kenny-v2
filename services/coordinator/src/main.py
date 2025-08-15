@@ -1,9 +1,11 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 import uvicorn
-from typing import Dict, Any
+from typing import Dict, Any, AsyncGenerator
 import asyncio
 import logging
+import json
 
 from .coordinator import Coordinator
 from .policy.engine import PolicyEngine
@@ -114,6 +116,52 @@ async def process_request(request: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error processing request: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/coordinator/process-stream")
+async def process_request_stream(request: Dict[str, Any]) -> StreamingResponse:
+    """Process a user request with progressive streaming results"""
+    user_input = request.get("user_input", "")
+    context = request.get("context", {})
+    
+    if not user_input:
+        raise HTTPException(status_code=400, detail="user_input is required")
+    
+    async def generate_progressive_response() -> AsyncGenerator[str, None]:
+        """Generate Server-Sent Events stream of progressive results"""
+        try:
+            # Send initial status
+            yield f"data: {json.dumps({'type': 'status', 'message': 'Starting request processing', 'timestamp': asyncio.get_event_loop().time()})}\n\n"
+            
+            # Stream results from coordinator
+            async for update in coordinator.process_request_progressive(user_input, context):
+                yield f"data: {json.dumps(update)}\n\n"
+                
+        except Exception as e:
+            error_msg = {
+                "type": "error", 
+                "message": str(e), 
+                "timestamp": asyncio.get_event_loop().time()
+            }
+            yield f"data: {json.dumps(error_msg)}\n\n"
+        finally:
+            # Send completion signal
+            completion_msg = {
+                "type": "complete", 
+                "message": "Request processing finished", 
+                "timestamp": asyncio.get_event_loop().time()
+            }
+            yield f"data: {json.dumps(completion_msg)}\n\n"
+    
+    return StreamingResponse(
+        generate_progressive_response(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
 
 @app.get("/policy/rules")
 async def get_policy_rules() -> Dict[str, Any]:
