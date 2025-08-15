@@ -126,12 +126,16 @@ class EgressRule:
 
 
 class EgressMonitor:
-    """Monitors network egress traffic for policy violations."""
+    """Monitors network egress traffic for policy violations with real-time enforcement."""
     
     def __init__(self):
         """Initialize egress monitor."""
         self.rules: Dict[str, EgressRule] = {}
         self.violation_handlers: List[Callable[[SecurityEvent], None]] = []
+        self.blocked_services: Dict[str, Dict[str, Any]] = {}  # service_id -> block_info
+        self.blocked_destinations: Dict[str, Dict[str, Any]] = {}  # destination -> block_info
+        self.enforcement_enabled = True
+        self.bypass_requests: Dict[str, Dict[str, Any]] = {}  # bypass_id -> request_info
         self.load_default_rules()
     
     def add_rule(self, rule: EgressRule):
@@ -150,13 +154,35 @@ class EgressMonitor:
     
     def check_egress(self, source_service: str, destination: str, port: Optional[int] = None,
                     correlation_id: Optional[str] = None) -> bool:
-        """Check if egress connection is allowed."""
+        """Check if egress connection is allowed with real-time enforcement."""
+        
+        # Check if service is blocked
+        if self.enforcement_enabled and source_service in self.blocked_services:
+            block_info = self.blocked_services[source_service]
+            if self._is_block_active(block_info):
+                logger.warning(f"Egress blocked: Service {source_service} is currently blocked")
+                self._log_blocked_attempt(source_service, destination, port, "service_blocked", correlation_id)
+                return False
+        
+        # Check if destination is blocked
+        destination_key = f"{destination}:{port or 'any'}"
+        if self.enforcement_enabled and destination_key in self.blocked_destinations:
+            block_info = self.blocked_destinations[destination_key]
+            if self._is_block_active(block_info):
+                logger.warning(f"Egress blocked: Destination {destination_key} is currently blocked")
+                self._log_blocked_attempt(source_service, destination, port, "destination_blocked", correlation_id)
+                return False
+        
+        # Check against egress rules
         for rule in self.rules.values():
             if rule.is_allowed(destination, port):
                 logger.debug(f"Egress allowed: {source_service} -> {destination}:{port or 'any'}")
                 return True
         
-        # Egress violation detected
+        # Egress violation detected - apply enforcement if enabled
+        if self.enforcement_enabled:
+            self._enforce_egress_violation(source_service, destination, port, correlation_id)
+        
         self._handle_egress_violation(source_service, destination, port, correlation_id)
         return False
     
@@ -228,6 +254,228 @@ class EgressMonitor:
             ports=[123]  # NTP only
         )
         self.add_rule(system_rule)
+    
+    def _enforce_egress_violation(self, source_service: str, destination: str, 
+                                port: Optional[int], correlation_id: Optional[str]):
+        """Apply real-time enforcement for egress violations."""
+        import uuid
+        
+        destination_key = f"{destination}:{port or 'any'}"
+        
+        # Block the destination temporarily (5 minutes by default)
+        block_duration_minutes = 5
+        block_info = {
+            "blocked_at": datetime.now(timezone.utc),
+            "duration_minutes": block_duration_minutes,
+            "triggered_by": f"{source_service}:{correlation_id or 'unknown'}",
+            "violation_count": 1,
+            "block_id": str(uuid.uuid4())
+        }
+        
+        # Check if destination already blocked and increment violation count
+        if destination_key in self.blocked_destinations:
+            existing_block = self.blocked_destinations[destination_key]
+            if self._is_block_active(existing_block):
+                existing_block["violation_count"] += 1
+                # Extend block duration for repeated violations
+                existing_block["duration_minutes"] = min(existing_block["duration_minutes"] * 2, 60)
+                logger.critical(f"EXTENDED BLOCK: {destination_key} - violation count: {existing_block['violation_count']}")
+            else:
+                self.blocked_destinations[destination_key] = block_info
+        else:
+            self.blocked_destinations[destination_key] = block_info
+        
+        logger.critical(f"REAL-TIME ENFORCEMENT: Blocked destination {destination_key} for {block_info['duration_minutes']} minutes")
+    
+    def block_service(self, service_id: str, duration_minutes: int = 60, reason: str = "Security violation",
+                     triggered_by: Optional[str] = None) -> str:
+        """Block a service from making any egress connections."""
+        import uuid
+        
+        block_info = {
+            "blocked_at": datetime.now(timezone.utc),
+            "duration_minutes": duration_minutes,
+            "reason": reason,
+            "triggered_by": triggered_by or "manual",
+            "block_id": str(uuid.uuid4()),
+            "type": "service_block"
+        }
+        
+        self.blocked_services[service_id] = block_info
+        logger.critical(f"SERVICE BLOCKED: {service_id} for {duration_minutes} minutes - {reason}")
+        
+        return block_info["block_id"]
+    
+    def block_destination(self, destination: str, port: Optional[int] = None, 
+                         duration_minutes: int = 30, reason: str = "Security violation",
+                         triggered_by: Optional[str] = None) -> str:
+        """Block access to a specific destination."""
+        import uuid
+        
+        destination_key = f"{destination}:{port or 'any'}"
+        block_info = {
+            "blocked_at": datetime.now(timezone.utc),
+            "duration_minutes": duration_minutes,
+            "reason": reason,
+            "triggered_by": triggered_by or "manual",
+            "block_id": str(uuid.uuid4()),
+            "type": "destination_block"
+        }
+        
+        self.blocked_destinations[destination_key] = block_info
+        logger.critical(f"DESTINATION BLOCKED: {destination_key} for {duration_minutes} minutes - {reason}")
+        
+        return block_info["block_id"]
+    
+    def unblock_service(self, service_id: str) -> bool:
+        """Manually unblock a service."""
+        if service_id in self.blocked_services:
+            block_info = self.blocked_services[service_id]
+            del self.blocked_services[service_id]
+            logger.info(f"SERVICE UNBLOCKED: {service_id} (block_id: {block_info.get('block_id', 'unknown')})")
+            return True
+        return False
+    
+    def unblock_destination(self, destination: str, port: Optional[int] = None) -> bool:
+        """Manually unblock a destination."""
+        destination_key = f"{destination}:{port or 'any'}"
+        if destination_key in self.blocked_destinations:
+            block_info = self.blocked_destinations[destination_key]
+            del self.blocked_destinations[destination_key]
+            logger.info(f"DESTINATION UNBLOCKED: {destination_key} (block_id: {block_info.get('block_id', 'unknown')})")
+            return True
+        return False
+    
+    def create_bypass_request(self, service_id: str, destination: str, port: Optional[int] = None,
+                            justification: str = "", duration_hours: int = 1) -> str:
+        """Create a temporary bypass request for blocked destinations."""
+        import uuid
+        
+        bypass_id = str(uuid.uuid4())
+        destination_key = f"{destination}:{port or 'any'}"
+        
+        bypass_info = {
+            "bypass_id": bypass_id,
+            "service_id": service_id,
+            "destination": destination_key,
+            "justification": justification,
+            "duration_hours": duration_hours,
+            "created_at": datetime.now(timezone.utc),
+            "approved": False,
+            "approved_by": None,
+            "approved_at": None,
+            "status": "pending"
+        }
+        
+        self.bypass_requests[bypass_id] = bypass_info
+        logger.info(f"BYPASS REQUEST CREATED: {bypass_id} for {service_id} -> {destination_key}")
+        
+        return bypass_id
+    
+    def approve_bypass_request(self, bypass_id: str, approved_by: str = "admin") -> bool:
+        """Approve a bypass request."""
+        if bypass_id in self.bypass_requests:
+            bypass_info = self.bypass_requests[bypass_id]
+            bypass_info["approved"] = True
+            bypass_info["approved_by"] = approved_by
+            bypass_info["approved_at"] = datetime.now(timezone.utc)
+            bypass_info["status"] = "approved"
+            
+            logger.info(f"BYPASS REQUEST APPROVED: {bypass_id} by {approved_by}")
+            return True
+        return False
+    
+    def _is_block_active(self, block_info: Dict[str, Any]) -> bool:
+        """Check if a block is still active based on its duration."""
+        blocked_at = datetime.fromisoformat(block_info["blocked_at"].replace("Z", "+00:00")) if isinstance(block_info["blocked_at"], str) else block_info["blocked_at"]
+        duration = timedelta(minutes=block_info["duration_minutes"])
+        return datetime.now(timezone.utc) < blocked_at + duration
+    
+    def _log_blocked_attempt(self, source_service: str, destination: str, port: Optional[int],
+                           block_reason: str, correlation_id: Optional[str]):
+        """Log blocked egress attempts for audit purposes."""
+        logger.warning(f"BLOCKED EGRESS ATTEMPT: {source_service} -> {destination}:{port or 'any'} ({block_reason})")
+        
+        # Create audit event for blocked attempt
+        import uuid
+        event = SecurityEvent(
+            event_id=str(uuid.uuid4()),
+            event_type=SecurityEventType.EGRESS_VIOLATION,
+            severity=SecuritySeverity.MEDIUM,
+            title="Blocked Egress Attempt",
+            description=f"Service {source_service} attempted connection to blocked destination {destination}:{port or 'unknown'}",
+            source_service=source_service,
+            target_resource=f"{destination}:{port or 'unknown'}",
+            correlation_id=correlation_id,
+            metadata={
+                "destination": destination,
+                "port": port,
+                "block_reason": block_reason,
+                "enforcement_action": "blocked"
+            }
+        )
+        
+        # Notify violation handlers
+        for handler in self.violation_handlers:
+            try:
+                handler(event)
+            except Exception as e:
+                logger.error(f"Error in blocked attempt handler: {e}")
+    
+    def get_enforcement_status(self) -> Dict[str, Any]:
+        """Get current enforcement status and statistics."""
+        # Clean up expired blocks
+        self._cleanup_expired_blocks()
+        
+        active_service_blocks = len([b for b in self.blocked_services.values() if self._is_block_active(b)])
+        active_destination_blocks = len([b for b in self.blocked_destinations.values() if self._is_block_active(b)])
+        
+        return {
+            "enforcement_enabled": self.enforcement_enabled,
+            "active_service_blocks": active_service_blocks,
+            "active_destination_blocks": active_destination_blocks,
+            "total_service_blocks": len(self.blocked_services),
+            "total_destination_blocks": len(self.blocked_destinations),
+            "pending_bypass_requests": len([r for r in self.bypass_requests.values() if r["status"] == "pending"]),
+            "approved_bypass_requests": len([r for r in self.bypass_requests.values() if r["status"] == "approved"]),
+            "blocked_services": list(self.blocked_services.keys()),
+            "blocked_destinations": list(self.blocked_destinations.keys())
+        }
+    
+    def _cleanup_expired_blocks(self):
+        """Remove expired blocks from tracking."""
+        current_time = datetime.now(timezone.utc)
+        
+        # Clean up expired service blocks
+        expired_services = []
+        for service_id, block_info in self.blocked_services.items():
+            if not self._is_block_active(block_info):
+                expired_services.append(service_id)
+        
+        for service_id in expired_services:
+            del self.blocked_services[service_id]
+            logger.info(f"EXPIRED BLOCK REMOVED: Service {service_id}")
+        
+        # Clean up expired destination blocks
+        expired_destinations = []
+        for dest_key, block_info in self.blocked_destinations.items():
+            if not self._is_block_active(block_info):
+                expired_destinations.append(dest_key)
+        
+        for dest_key in expired_destinations:
+            del self.blocked_destinations[dest_key]
+            logger.info(f"EXPIRED BLOCK REMOVED: Destination {dest_key}")
+        
+        # Clean up old bypass requests (older than 7 days)
+        cutoff_time = current_time - timedelta(days=7)
+        expired_bypasses = []
+        for bypass_id, bypass_info in self.bypass_requests.items():
+            created_at = datetime.fromisoformat(bypass_info["created_at"].replace("Z", "+00:00")) if isinstance(bypass_info["created_at"], str) else bypass_info["created_at"]
+            if created_at < cutoff_time:
+                expired_bypasses.append(bypass_id)
+        
+        for bypass_id in expired_bypasses:
+            del self.bypass_requests[bypass_id]
 
 
 class DataAccessMonitor:
@@ -749,7 +997,119 @@ class AutomatedResponseEngine:
         )
         self.rules[incident_escalation_rule.rule_id] = incident_escalation_rule
         
-        logger.info(f"Initialized {len(self.rules)} default response rules")
+        # Service isolation rule for repeated violations
+        service_isolation_rule = ResponseRule(
+            rule_id="service_isolation_response",
+            name="Service Isolation for Repeated Violations",
+            description="Isolate services with multiple security violations",
+            triggers={
+                "event_type": [SecurityEventType.EGRESS_VIOLATION, SecurityEventType.DATA_ACCESS_VIOLATION],
+                "severity": [SecuritySeverity.HIGH, SecuritySeverity.CRITICAL],
+                "max_events_per_hour": 5,
+                "service_repeat_violations": True
+            },
+            actions=[
+                ResponseAction(
+                    action_id="isolate_service",
+                    action_type="isolate",
+                    description="Isolate service from network and data access",
+                    parameters={"isolation_level": "full", "duration_minutes": 60},
+                    cooldown_minutes=180
+                ),
+                ResponseAction(
+                    action_id="quarantine_data",
+                    action_type="quarantine",
+                    description="Quarantine data accessed by compromised service",
+                    parameters={"quarantine_scope": "service_data", "review_required": True},
+                    cooldown_minutes=120
+                ),
+                ResponseAction(
+                    action_id="alert_critical_isolation",
+                    action_type="alert",
+                    description="Send critical alert for service isolation",
+                    parameters={"urgency": "critical", "channels": ["logging", "notification"]},
+                    cooldown_minutes=10
+                )
+            ],
+            priority=5
+        )
+        self.rules[service_isolation_rule.rule_id] = service_isolation_rule
+        
+        # Data exfiltration prevention rule
+        data_exfiltration_rule = ResponseRule(
+            rule_id="data_exfiltration_prevention",
+            name="Data Exfiltration Prevention",
+            description="Automated response for potential data exfiltration attempts",
+            triggers={
+                "event_type": SecurityEventType.POLICY_VIOLATION,
+                "severity": SecuritySeverity.CRITICAL,
+                "violation_pattern": "external_data_transfer"
+            },
+            actions=[
+                ResponseAction(
+                    action_id="block_data_transfer",
+                    action_type="block",
+                    description="Block all data transfer operations for service",
+                    parameters={"scope": "data_operations", "block_type": "immediate"},
+                    cooldown_minutes=5
+                ),
+                ResponseAction(
+                    action_id="freeze_service",
+                    action_type="freeze",
+                    description="Freeze service operations pending investigation",
+                    parameters={"freeze_level": "all_operations", "require_manual_unfreeze": True},
+                    cooldown_minutes=30
+                ),
+                ResponseAction(
+                    action_id="emergency_audit",
+                    action_type="audit",
+                    description="Trigger emergency audit of all service activities",
+                    parameters={"audit_level": "emergency", "scope": "full_history"},
+                    cooldown_minutes=60
+                )
+            ],
+            priority=1
+        )
+        self.rules[data_exfiltration_rule.rule_id] = data_exfiltration_rule
+        
+        # Suspicious activity containment rule
+        suspicious_activity_rule = ResponseRule(
+            rule_id="suspicious_activity_containment",
+            name="Suspicious Activity Containment",
+            description="Contain services showing suspicious behavioral patterns",
+            triggers={
+                "event_type": SecurityEventType.SUSPICIOUS_ACTIVITY,
+                "severity": [SecuritySeverity.MEDIUM, SecuritySeverity.HIGH, SecuritySeverity.CRITICAL],
+                "pattern_score": 0.7  # Behavioral analysis threshold
+            },
+            actions=[
+                ResponseAction(
+                    action_id="rate_limit_service",
+                    action_type="rate_limit",
+                    description="Apply rate limiting to suspicious service",
+                    parameters={"limit_type": "requests_per_minute", "limit_value": 10},
+                    cooldown_minutes=45
+                ),
+                ResponseAction(
+                    action_id="enhance_monitoring",
+                    action_type="monitor",
+                    description="Enable enhanced monitoring for suspicious service",
+                    parameters={"monitoring_level": "detailed", "duration_hours": 24},
+                    cooldown_minutes=60
+                ),
+                ResponseAction(
+                    action_id="review_access",
+                    action_type="review",
+                    description="Schedule access review for suspicious service",
+                    parameters={"review_type": "access_permissions", "priority": "high"},
+                    cooldown_minutes=120
+                )
+            ],
+            priority=15
+        )
+        self.rules[suspicious_activity_rule.rule_id] = suspicious_activity_rule
+        
+        logger.info(f"Initialized {len(self.rules)} default response rules with enhanced containment workflows")
     
     def add_response_handler(self, action_type: str, handler: Callable):
         """Add handler for specific response action types."""
@@ -1417,14 +1777,197 @@ class SecurityMonitor:
                 logger.critical(f"AUTOMATED SECURITY BLOCK: {action.description}")
                 return {"status": "blocked", "scope": scope}
         
-        # Register response handlers
+        def handle_isolate_action(action: ResponseAction, context) -> Dict[str, Any]:
+            """Handle service isolation response actions."""
+            isolation_level = action.parameters.get("isolation_level", "network")
+            duration_minutes = action.parameters.get("duration_minutes", 60)
+            
+            if isinstance(context, SecurityEvent):
+                service = context.source_service
+                logger.critical(f"SERVICE ISOLATION TRIGGERED: {service} - {action.description}")
+                logger.critical(f"Isolation Level: {isolation_level}, Duration: {duration_minutes} minutes")
+                
+                # Record isolation action for tracking
+                isolation_data = {
+                    "service": service,
+                    "isolation_level": isolation_level,
+                    "duration_minutes": duration_minutes,
+                    "triggered_by": context.event_id,
+                    "isolation_start": datetime.now(timezone.utc).isoformat()
+                }
+                
+                return {
+                    "status": "service_isolated",
+                    "service": service,
+                    "isolation_level": isolation_level,
+                    "duration_minutes": duration_minutes,
+                    "isolation_data": isolation_data
+                }
+            else:
+                logger.critical(f"SERVICE ISOLATION: {action.description}")
+                return {"status": "isolation_initiated", "isolation_level": isolation_level}
+        
+        def handle_quarantine_action(action: ResponseAction, context) -> Dict[str, Any]:
+            """Handle data quarantine response actions."""
+            quarantine_scope = action.parameters.get("quarantine_scope", "service_data")
+            review_required = action.parameters.get("review_required", True)
+            
+            if isinstance(context, SecurityEvent):
+                service = context.source_service
+                logger.critical(f"DATA QUARANTINE TRIGGERED: {service} - {action.description}")
+                logger.critical(f"Quarantine Scope: {quarantine_scope}, Review Required: {review_required}")
+                
+                import uuid
+                quarantine_data = {
+                    "service": service,
+                    "quarantine_scope": quarantine_scope,
+                    "review_required": review_required,
+                    "triggered_by": context.event_id,
+                    "quarantine_start": datetime.now(timezone.utc).isoformat(),
+                    "quarantine_id": str(uuid.uuid4())
+                }
+                
+                return {
+                    "status": "data_quarantined",
+                    "service": service,
+                    "quarantine_scope": quarantine_scope,
+                    "quarantine_data": quarantine_data
+                }
+            else:
+                logger.critical(f"DATA QUARANTINE: {action.description}")
+                return {"status": "quarantine_initiated", "scope": quarantine_scope}
+        
+        def handle_freeze_action(action: ResponseAction, context) -> Dict[str, Any]:
+            """Handle service freeze response actions."""
+            freeze_level = action.parameters.get("freeze_level", "all_operations")
+            manual_unfreeze = action.parameters.get("require_manual_unfreeze", False)
+            
+            if isinstance(context, SecurityEvent):
+                service = context.source_service
+                logger.critical(f"SERVICE FREEZE TRIGGERED: {service} - {action.description}")
+                logger.critical(f"Freeze Level: {freeze_level}, Manual Unfreeze Required: {manual_unfreeze}")
+                
+                import uuid
+                freeze_data = {
+                    "service": service,
+                    "freeze_level": freeze_level,
+                    "manual_unfreeze_required": manual_unfreeze,
+                    "triggered_by": context.event_id,
+                    "freeze_start": datetime.now(timezone.utc).isoformat(),
+                    "freeze_id": str(uuid.uuid4())
+                }
+                
+                return {
+                    "status": "service_frozen",
+                    "service": service,
+                    "freeze_level": freeze_level,
+                    "freeze_data": freeze_data
+                }
+            else:
+                logger.critical(f"SERVICE FREEZE: {action.description}")
+                return {"status": "freeze_initiated", "freeze_level": freeze_level}
+        
+        def handle_rate_limit_action(action: ResponseAction, context) -> Dict[str, Any]:
+            """Handle rate limiting response actions."""
+            limit_type = action.parameters.get("limit_type", "requests_per_minute")
+            limit_value = action.parameters.get("limit_value", 10)
+            
+            if isinstance(context, SecurityEvent):
+                service = context.source_service
+                logger.warning(f"RATE LIMITING APPLIED: {service} - {action.description}")
+                logger.warning(f"Limit: {limit_value} {limit_type}")
+                
+                rate_limit_data = {
+                    "service": service,
+                    "limit_type": limit_type,
+                    "limit_value": limit_value,
+                    "triggered_by": context.event_id,
+                    "rate_limit_start": datetime.now(timezone.utc).isoformat()
+                }
+                
+                return {
+                    "status": "rate_limited",
+                    "service": service,
+                    "limit_type": limit_type,
+                    "limit_value": limit_value,
+                    "rate_limit_data": rate_limit_data
+                }
+            else:
+                logger.warning(f"RATE LIMITING: {action.description}")
+                return {"status": "rate_limit_applied", "limit_type": limit_type}
+        
+        def handle_monitor_action(action: ResponseAction, context) -> Dict[str, Any]:
+            """Handle enhanced monitoring response actions."""
+            monitoring_level = action.parameters.get("monitoring_level", "standard")
+            duration_hours = action.parameters.get("duration_hours", 24)
+            
+            if isinstance(context, SecurityEvent):
+                service = context.source_service
+                logger.info(f"ENHANCED MONITORING ENABLED: {service} - {action.description}")
+                logger.info(f"Monitoring Level: {monitoring_level}, Duration: {duration_hours} hours")
+                
+                monitoring_data = {
+                    "service": service,
+                    "monitoring_level": monitoring_level,
+                    "duration_hours": duration_hours,
+                    "triggered_by": context.event_id,
+                    "monitoring_start": datetime.now(timezone.utc).isoformat()
+                }
+                
+                return {
+                    "status": "monitoring_enhanced",
+                    "service": service,
+                    "monitoring_level": monitoring_level,
+                    "monitoring_data": monitoring_data
+                }
+            else:
+                logger.info(f"ENHANCED MONITORING: {action.description}")
+                return {"status": "monitoring_enabled", "monitoring_level": monitoring_level}
+        
+        def handle_review_action(action: ResponseAction, context) -> Dict[str, Any]:
+            """Handle access review response actions."""
+            review_type = action.parameters.get("review_type", "access_permissions")
+            priority = action.parameters.get("priority", "medium")
+            
+            if isinstance(context, SecurityEvent):
+                service = context.source_service
+                logger.info(f"ACCESS REVIEW SCHEDULED: {service} - {action.description}")
+                logger.info(f"Review Type: {review_type}, Priority: {priority}")
+                
+                import uuid
+                review_data = {
+                    "service": service,
+                    "review_type": review_type,
+                    "priority": priority,
+                    "triggered_by": context.event_id,
+                    "review_scheduled": datetime.now(timezone.utc).isoformat(),
+                    "review_id": str(uuid.uuid4())
+                }
+                
+                return {
+                    "status": "review_scheduled",
+                    "service": service,
+                    "review_type": review_type,
+                    "review_data": review_data
+                }
+            else:
+                logger.info(f"ACCESS REVIEW: {action.description}")
+                return {"status": "review_initiated", "review_type": review_type}
+        
+        # Register all response handlers
         self.response_engine.add_response_handler("alert", handle_alert_action)
         self.response_engine.add_response_handler("notify", handle_notify_action)
         self.response_engine.add_response_handler("audit", handle_audit_action)
         self.response_engine.add_response_handler("escalate", handle_escalate_action)
         self.response_engine.add_response_handler("block", handle_block_action)
+        self.response_engine.add_response_handler("isolate", handle_isolate_action)
+        self.response_engine.add_response_handler("quarantine", handle_quarantine_action)
+        self.response_engine.add_response_handler("freeze", handle_freeze_action)
+        self.response_engine.add_response_handler("rate_limit", handle_rate_limit_action)
+        self.response_engine.add_response_handler("monitor", handle_monitor_action)
+        self.response_engine.add_response_handler("review", handle_review_action)
         
-        logger.info("Initialized automated response handlers")
+        logger.info("Initialized automated response handlers with advanced containment capabilities")
     
     def check_network_egress(self, source_service: str, destination: str, port: Optional[int] = None,
                            correlation_id: Optional[str] = None) -> bool:

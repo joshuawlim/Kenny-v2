@@ -4,11 +4,13 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
 import uvicorn
 import json
+import os
 
 from registry import AgentRegistry
 from schemas import (
@@ -293,6 +295,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Mount static files for security dashboard
+static_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
+if os.path.exists(static_path):
+    app.mount("/static", StaticFiles(directory=static_path), name="static")
+
 
 @app.get("/health")
 async def health_check() -> HealthCheckResponse:
@@ -352,7 +359,15 @@ async def root():
             "security_forecast": "/security/forecast",
             "response_rules": "/security/response/rules",
             "response_actions": "/security/response/actions/history",
-            "response_dashboard": "/security/response/dashboard"
+            "response_dashboard": "/security/response/dashboard",
+            "security_dashboard_ui": "/security/ui",
+            "enforcement_status": "/security/enforcement/status",
+            "enforcement_block_service": "/security/enforcement/block/service",
+            "enforcement_block_destination": "/security/enforcement/block/destination",
+            "enforcement_unblock_service": "/security/enforcement/unblock/service/{service_id}",
+            "enforcement_unblock_destination": "/security/enforcement/unblock/destination",
+            "enforcement_bypass_request": "/security/enforcement/bypass/request",
+            "enforcement_bypass_approve": "/security/enforcement/bypass/{bypass_id}/approve"
         }
     }
 
@@ -1345,6 +1360,294 @@ async def get_automated_response_dashboard(hours: int = 24):
         )
 
 
+@app.get("/security/enforcement/status")
+async def get_network_enforcement_status():
+    """Get network enforcement status and statistics"""
+    if not SECURITY_AVAILABLE or security_monitor is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Security monitoring service not available"
+        )
+    
+    try:
+        status = security_monitor.egress_monitor.get_enforcement_status()
+        return {
+            "enforcement_status": status,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to get network enforcement status: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while retrieving enforcement status"
+        )
+
+
+@app.post("/security/enforcement/block/service")
+async def block_service_egress(block_data: Dict[str, Any]):
+    """Block a service from making egress connections"""
+    if not SECURITY_AVAILABLE or security_monitor is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Security monitoring service not available"
+        )
+    
+    try:
+        service_id = block_data.get("service_id")
+        duration_minutes = block_data.get("duration_minutes", 60)
+        reason = block_data.get("reason", "Manual block")
+        triggered_by = block_data.get("triggered_by", "admin")
+        
+        if not service_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="service_id is required"
+            )
+        
+        if duration_minutes < 1 or duration_minutes > 1440:  # Max 24 hours
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="duration_minutes must be between 1 and 1440"
+            )
+        
+        block_id = security_monitor.egress_monitor.block_service(
+            service_id, duration_minutes, reason, triggered_by
+        )
+        
+        return {
+            "status": "service_blocked",
+            "service_id": service_id,
+            "block_id": block_id,
+            "duration_minutes": duration_minutes,
+            "reason": reason,
+            "blocked_at": datetime.now(timezone.utc).isoformat()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to block service: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while blocking service"
+        )
+
+
+@app.post("/security/enforcement/block/destination")
+async def block_destination_egress(block_data: Dict[str, Any]):
+    """Block access to a specific destination"""
+    if not SECURITY_AVAILABLE or security_monitor is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Security monitoring service not available"
+        )
+    
+    try:
+        destination = block_data.get("destination")
+        port = block_data.get("port")
+        duration_minutes = block_data.get("duration_minutes", 30)
+        reason = block_data.get("reason", "Manual block")
+        triggered_by = block_data.get("triggered_by", "admin")
+        
+        if not destination:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="destination is required"
+            )
+        
+        if duration_minutes < 1 or duration_minutes > 1440:  # Max 24 hours
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="duration_minutes must be between 1 and 1440"
+            )
+        
+        block_id = security_monitor.egress_monitor.block_destination(
+            destination, port, duration_minutes, reason, triggered_by
+        )
+        
+        return {
+            "status": "destination_blocked",
+            "destination": destination,
+            "port": port,
+            "block_id": block_id,
+            "duration_minutes": duration_minutes,
+            "reason": reason,
+            "blocked_at": datetime.now(timezone.utc).isoformat()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to block destination: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while blocking destination"
+        )
+
+
+@app.post("/security/enforcement/unblock/service/{service_id}")
+async def unblock_service_egress(service_id: str):
+    """Manually unblock a service"""
+    if not SECURITY_AVAILABLE or security_monitor is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Security monitoring service not available"
+        )
+    
+    try:
+        success = security_monitor.egress_monitor.unblock_service(service_id)
+        
+        if success:
+            return {
+                "status": "service_unblocked",
+                "service_id": service_id,
+                "unblocked_at": datetime.now(timezone.utc).isoformat()
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Service {service_id} is not currently blocked"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to unblock service: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while unblocking service"
+        )
+
+
+@app.post("/security/enforcement/unblock/destination")
+async def unblock_destination_egress(unblock_data: Dict[str, Any]):
+    """Manually unblock a destination"""
+    if not SECURITY_AVAILABLE or security_monitor is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Security monitoring service not available"
+        )
+    
+    try:
+        destination = unblock_data.get("destination")
+        port = unblock_data.get("port")
+        
+        if not destination:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="destination is required"
+            )
+        
+        success = security_monitor.egress_monitor.unblock_destination(destination, port)
+        
+        if success:
+            return {
+                "status": "destination_unblocked",
+                "destination": destination,
+                "port": port,
+                "unblocked_at": datetime.now(timezone.utc).isoformat()
+            }
+        else:
+            destination_key = f"{destination}:{port or 'any'}"
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Destination {destination_key} is not currently blocked"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to unblock destination: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while unblocking destination"
+        )
+
+
+@app.post("/security/enforcement/bypass/request")
+async def create_bypass_request(request_data: Dict[str, Any]):
+    """Create a bypass request for blocked destinations"""
+    if not SECURITY_AVAILABLE or security_monitor is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Security monitoring service not available"
+        )
+    
+    try:
+        service_id = request_data.get("service_id")
+        destination = request_data.get("destination")
+        port = request_data.get("port")
+        justification = request_data.get("justification", "")
+        duration_hours = request_data.get("duration_hours", 1)
+        
+        if not service_id or not destination:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="service_id and destination are required"
+            )
+        
+        if duration_hours < 1 or duration_hours > 72:  # Max 3 days
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="duration_hours must be between 1 and 72"
+            )
+        
+        bypass_id = security_monitor.egress_monitor.create_bypass_request(
+            service_id, destination, port, justification, duration_hours
+        )
+        
+        return {
+            "status": "bypass_request_created",
+            "bypass_id": bypass_id,
+            "service_id": service_id,
+            "destination": destination,
+            "port": port,
+            "justification": justification,
+            "duration_hours": duration_hours,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create bypass request: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while creating bypass request"
+        )
+
+
+@app.post("/security/enforcement/bypass/{bypass_id}/approve")
+async def approve_bypass_request(bypass_id: str, approval_data: Dict[str, Any]):
+    """Approve a bypass request"""
+    if not SECURITY_AVAILABLE or security_monitor is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Security monitoring service not available"
+        )
+    
+    try:
+        approved_by = approval_data.get("approved_by", "admin")
+        
+        success = security_monitor.egress_monitor.approve_bypass_request(bypass_id, approved_by)
+        
+        if success:
+            return {
+                "status": "bypass_request_approved",
+                "bypass_id": bypass_id,
+                "approved_by": approved_by,
+                "approved_at": datetime.now(timezone.utc).isoformat()
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Bypass request {bypass_id} not found"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to approve bypass request: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while approving bypass request"
+        )
+
+
 # Analytics endpoints
 @app.get("/analytics/dashboard")
 async def get_analytics_dashboard(hours: int = 24):
@@ -1956,6 +2259,25 @@ async def stream_live_traces():
             "Access-Control-Allow-Headers": "*",
         }
     )
+
+
+@app.get("/security/ui")
+async def get_security_dashboard_ui():
+    """Serve the security dashboard UI"""
+    static_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
+    dashboard_file = os.path.join(static_path, "security-dashboard.html")
+    
+    if os.path.exists(dashboard_file):
+        return FileResponse(
+            dashboard_file, 
+            media_type="text/html",
+            headers={"Cache-Control": "no-cache"}
+        )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Security dashboard UI not found"
+        )
 
 
 @app.exception_handler(Exception)
