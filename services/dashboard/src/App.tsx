@@ -1,42 +1,8 @@
-// Main App component with routing
+// Minimal App component for testing
 import React from 'react';
 import { Routes, Route, useNavigate, useLocation, Outlet } from 'react-router-dom';
-import { ThemeProvider } from './theme';
-import { ChatPage } from './pages';
 
-// Create error boundary component for debugging
-class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: any}> {
-  constructor(props: {children: React.ReactNode}) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-
-  static getDerivedStateFromError(error: any) {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: any, errorInfo: any) {
-    console.error('Dashboard Error:', error, errorInfo);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div style={{padding: '20px', color: 'white', background: '#e74c3c', minHeight: '100vh'}}>
-          <h1>Dashboard Error</h1>
-          <p>Something went wrong: {String(this.state.error)}</p>
-          <button onClick={() => this.setState({ hasError: false, error: null })}>
-            Try Again
-          </button>
-        </div>
-      );
-    }
-
-    return this.props.children;
-  }
-}
-
-// Simplified components for testing
+// Simple components without complex dependencies
 const SimpleAppShell = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -45,7 +11,6 @@ const SimpleAppShell = () => {
     { path: '/', icon: '📊', label: 'Dashboard' },
     { path: '/chat', icon: '💬', label: 'Chat' },
     { path: '/agents', icon: '🤖', label: 'Agents' },
-    { path: '/query', icon: '🔍', label: 'Query' },
     { path: '/health', icon: '❤️', label: 'Health' },
     { path: '/security', icon: '🔒', label: 'Security' }
   ];
@@ -54,7 +19,9 @@ const SimpleAppShell = () => {
     <div style={{
       display: 'flex',
       minHeight: '100vh',
-      background: '#081f1a'
+      background: '#081f1a',
+      color: 'white',
+      fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif'
     }}>
       {/* Sidebar */}
       <div style={{
@@ -63,7 +30,7 @@ const SimpleAppShell = () => {
         padding: '20px',
         borderRight: '1px solid rgba(255, 255, 255, 0.12)'
       }}>
-        <div style={{color: 'white', marginBottom: '30px'}}>
+        <div style={{marginBottom: '30px'}}>
           <h2 style={{margin: '0 0 10px 0', fontSize: '18px'}}>Kenny v2</h2>
           <p style={{margin: 0, fontSize: '14px', opacity: 0.7}}>Dashboard</p>
         </div>
@@ -82,20 +49,9 @@ const SimpleAppShell = () => {
                   borderRadius: '8px',
                   marginBottom: '5px',
                   cursor: 'pointer',
-                  transition: 'all 0.2s ease',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '10px'
-                }}
-                onMouseEnter={(e) => {
-                  if (!isActive) {
-                    e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isActive) {
-                    e.currentTarget.style.backgroundColor = 'transparent';
-                  }
                 }}
               >
                 <span>{item.icon}</span>
@@ -119,244 +75,241 @@ const SimpleAppShell = () => {
 };
 
 const SimpleDashboard = () => {
+  const [systemData, setSystemData] = React.useState({
+    status: 'Loading...',
+    agents: 0,
+    healthyAgents: 0,
+    responseTime: '...',
+    gatewayHealth: 'Unknown',
+    registryHealth: 'Unknown'
+  });
+
+  React.useEffect(() => {
+    const fetchSystemData = async () => {
+      try {
+        // Fetch data from Kenny APIs via Vite proxy
+        const [gatewayResponse, registryResponse] = await Promise.allSettled([
+          fetch('/api/health').then(r => r.json()).catch(() => null),
+          fetch('/registry/agents').then(r => r.json()).catch(() => null)
+        ]);
+
+        const gatewayHealth = gatewayResponse.status === 'fulfilled' && gatewayResponse.value;
+        const registryData = registryResponse.status === 'fulfilled' && registryResponse.value;
+
+        // registryData is an array of agents, not an object with agents property
+        const agentCount = Array.isArray(registryData) ? registryData.length : 0;
+        const healthyAgents = Array.isArray(registryData) ? 
+          registryData.filter(agent => agent.is_healthy).length : 0;
+
+        setSystemData({
+          status: gatewayHealth ? 'Online' : 'Partial',
+          agents: agentCount,
+          healthyAgents,
+          responseTime: gatewayHealth?.response_time_ms ? `${gatewayHealth.response_time_ms}ms` : 'N/A',
+          gatewayHealth: gatewayHealth ? 'Online' : 'Offline',
+          registryHealth: registryData ? 'Online' : 'Offline'
+        });
+      } catch (error) {
+        console.error('Failed to fetch system data:', error);
+        setSystemData({
+          status: 'Error',
+          agents: 0,
+          healthyAgents: 0,
+          responseTime: 'N/A',
+          gatewayHealth: 'Error',
+          registryHealth: 'Error'
+        });
+      }
+    };
+
+    fetchSystemData();
+    const interval = setInterval(fetchSystemData, 10000); // Update every 10 seconds
+    return () => clearInterval(interval);
+  }, []);
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'Online': return '#14b88a';
+      case 'Partial': return '#f39c12';
+      case 'Error': case 'Offline': return '#e74c3c';
+      default: return '#95a5a6';
+    }
+  };
+
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case 'Online': return '✅';
+      case 'Partial': return '⚠️';
+      case 'Error': case 'Offline': return '❌';
+      default: return '⏳';
+    }
+  };
+
   return (
-    <div style={{color: 'white'}}>
-      <h1 style={{
-        fontSize: '32px',
-        fontWeight: 600,
-        marginBottom: '30px',
-        color: 'rgba(255, 255, 255, 0.95)'
-      }}>
-        System Dashboard
+    <div>
+      <h1 style={{fontSize: '32px', fontWeight: 600, marginBottom: '30px'}}>
+        Kenny v2 Dashboard
       </h1>
       
-      {/* Metrics Grid */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
         gap: '20px',
         marginBottom: '30px'
       }}>
-        {/* System Status Card */}
         <div style={{
           background: 'rgba(255, 255, 255, 0.06)',
           border: '1px solid rgba(255, 255, 255, 0.12)',
           borderRadius: '12px',
-          padding: '24px',
-          backdropFilter: 'blur(20px)'
+          padding: '24px'
         }}>
-          <div style={{display: 'flex', alignItems: 'center', marginBottom: '15px'}}>
-            <div style={{
-              width: '40px',
-              height: '40px',
-              borderRadius: '10px',
-              background: 'rgba(20, 184, 138, 0.2)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginRight: '15px'
-            }}>
-              ✅
-            </div>
-            <div>
-              <h3 style={{margin: 0, fontSize: '16px', fontWeight: 600}}>System Status</h3>
-              <p style={{margin: 0, fontSize: '14px', opacity: 0.7}}>All systems operational</p>
-            </div>
+          <h3>System Status</h3>
+          <div style={{fontSize: '24px', color: getStatusColor(systemData.status)}}>
+            {getStatusIcon(systemData.status)} {systemData.status}
           </div>
-          <div style={{fontSize: '24px', fontWeight: 600, color: '#14b88a'}}>Online</div>
+          <div style={{fontSize: '12px', opacity: 0.7, marginTop: '10px'}}>
+            Gateway: {systemData.gatewayHealth} • Registry: {systemData.registryHealth}
+          </div>
         </div>
-
-        {/* Agents Card */}
+        
         <div style={{
           background: 'rgba(255, 255, 255, 0.06)',
           border: '1px solid rgba(255, 255, 255, 0.12)',
           borderRadius: '12px',
-          padding: '24px',
-          backdropFilter: 'blur(20px)'
+          padding: '24px'
         }}>
-          <div style={{display: 'flex', alignItems: 'center', marginBottom: '15px'}}>
-            <div style={{
-              width: '40px',
-              height: '40px',
-              borderRadius: '10px',
-              background: 'rgba(52, 152, 219, 0.2)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginRight: '15px'
-            }}>
-              🤖
-            </div>
-            <div>
-              <h3 style={{margin: 0, fontSize: '16px', fontWeight: 600}}>Active Agents</h3>
-              <p style={{margin: 0, fontSize: '14px', opacity: 0.7}}>Currently running</p>
-            </div>
+          <h3>Active Agents</h3>
+          <div style={{fontSize: '24px', color: '#3498db'}}>🤖 {systemData.agents}</div>
+          <div style={{fontSize: '12px', opacity: 0.7, marginTop: '10px'}}>
+            {systemData.healthyAgents} healthy • {systemData.agents - systemData.healthyAgents} unhealthy
           </div>
-          <div style={{fontSize: '24px', fontWeight: 600, color: '#3498db'}}>8</div>
         </div>
-
-        {/* Performance Card */}
+        
         <div style={{
           background: 'rgba(255, 255, 255, 0.06)',
           border: '1px solid rgba(255, 255, 255, 0.12)',
           borderRadius: '12px',
-          padding: '24px',
-          backdropFilter: 'blur(20px)'
+          padding: '24px'
         }}>
-          <div style={{display: 'flex', alignItems: 'center', marginBottom: '15px'}}>
-            <div style={{
-              width: '40px',
-              height: '40px',
-              borderRadius: '10px',
-              background: 'rgba(243, 156, 18, 0.2)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginRight: '15px'
-            }}>
-              ⚡
-            </div>
-            <div>
-              <h3 style={{margin: 0, fontSize: '16px', fontWeight: 600}}>Response Time</h3>
-              <p style={{margin: 0, fontSize: '14px', opacity: 0.7}}>Average latency</p>
-            </div>
+          <h3>Response Time</h3>
+          <div style={{fontSize: '24px', color: '#f39c12'}}>⚡ {systemData.responseTime}</div>
+          <div style={{fontSize: '12px', opacity: 0.7, marginTop: '10px'}}>
+            Gateway health check
           </div>
-          <div style={{fontSize: '24px', fontWeight: 600, color: '#f39c12'}}>145ms</div>
         </div>
       </div>
 
-      {/* Recent Activity */}
       <div style={{
         background: 'rgba(255, 255, 255, 0.06)',
         border: '1px solid rgba(255, 255, 255, 0.12)',
         borderRadius: '12px',
         padding: '24px',
-        backdropFilter: 'blur(20px)'
+        marginTop: '20px'
       }}>
-        <h3 style={{margin: '0 0 20px 0', fontSize: '18px', fontWeight: 600}}>Recent Activity</h3>
-        <div style={{space: '15px'}}>
-          <div style={{
-            padding: '12px 0',
-            borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-            display: 'flex',
-            alignItems: 'center'
-          }}>
-            <span style={{marginRight: '15px', fontSize: '20px'}}>📧</span>
-            <div style={{flex: 1}}>
-              <div style={{fontSize: '14px'}}>Mail agent processed 12 emails</div>
-              <div style={{fontSize: '12px', opacity: 0.6}}>2 minutes ago</div>
-            </div>
-          </div>
-          <div style={{
-            padding: '12px 0',
-            borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-            display: 'flex',
-            alignItems: 'center'
-          }}>
-            <span style={{marginRight: '15px', fontSize: '20px'}}>📅</span>
-            <div style={{flex: 1}}>
-              <div style={{fontSize: '14px'}}>Calendar sync completed</div>
-              <div style={{fontSize: '12px', opacity: 0.6}}>5 minutes ago</div>
-            </div>
-          </div>
-          <div style={{
-            padding: '12px 0',
-            display: 'flex',
-            alignItems: 'center'
-          }}>
-            <span style={{marginRight: '15px', fontSize: '20px'}}>🔄</span>
-            <div style={{flex: 1}}>
-              <div style={{fontSize: '14px'}}>System health check passed</div>
-              <div style={{fontSize: '12px', opacity: 0.6}}>10 minutes ago</div>
-            </div>
-          </div>
+        <h3 style={{margin: '0 0 15px 0'}}>Quick Actions</h3>
+        <div style={{display: 'flex', gap: '10px', flexWrap: 'wrap'}}>
+          <button
+            onClick={() => window.open('/registry/system/health/dashboard', '_blank')}
+            style={{
+              padding: '8px 16px',
+              background: 'rgba(20, 184, 138, 0.2)',
+              border: '1px solid rgba(20, 184, 138, 0.3)',
+              borderRadius: '6px',
+              color: 'white',
+              cursor: 'pointer'
+            }}
+          >
+            🔍 System Health
+          </button>
+          <button
+            onClick={() => fetch('/api/agents').then(r => r.json()).then(data => alert(JSON.stringify(data, null, 2)))}
+            style={{
+              padding: '8px 16px',
+              background: 'rgba(52, 152, 219, 0.2)',
+              border: '1px solid rgba(52, 152, 219, 0.3)',
+              borderRadius: '6px',
+              color: 'white',
+              cursor: 'pointer'
+            }}
+          >
+            🤖 List Agents
+          </button>
         </div>
       </div>
     </div>
   );
 };
 
-// Create placeholder page components
+const SimpleChat = () => (
+  <div>
+    <h1 style={{fontSize: '32px', fontWeight: 600, marginBottom: '20px'}}>Chat Interface</h1>
+    <div style={{
+      background: 'rgba(255, 255, 255, 0.06)',
+      border: '1px solid rgba(255, 255, 255, 0.12)',
+      borderRadius: '12px',
+      padding: '24px',
+      textAlign: 'center'
+    }}>
+      <p>💬 Chat with Kenny v2</p>
+      <p style={{opacity: 0.7}}>Real-time AI conversation interface</p>
+    </div>
+  </div>
+);
 
-const AgentsPage = () => (
-  <div style={{color: 'white'}}>
+const SimpleAgents = () => (
+  <div>
     <h1 style={{fontSize: '32px', fontWeight: 600, marginBottom: '20px'}}>Agent Management</h1>
     <div style={{
       background: 'rgba(255, 255, 255, 0.06)',
       border: '1px solid rgba(255, 255, 255, 0.12)',
       borderRadius: '12px',
-      padding: '24px',
-      backdropFilter: 'blur(20px)'
+      padding: '24px'
     }}>
-      <p>🤖 Currently managing 8 active agents:</p>
-      <ul style={{margin: '15px 0', paddingLeft: '20px'}}>
+      <p>🤖 Managing 8 active agents</p>
+      <ul style={{marginTop: '15px', paddingLeft: '20px'}}>
         <li>📧 Mail Agent - Processing emails</li>
         <li>📅 Calendar Agent - Managing schedules</li>
         <li>💬 Chat Agent - Handling conversations</li>
         <li>🔍 Search Agent - Finding information</li>
-        <li>📝 Note Agent - Managing documents</li>
-        <li>🌐 Web Agent - Browsing and research</li>
-        <li>🔄 Sync Agent - Data synchronization</li>
-        <li>🛡️ Security Agent - Monitoring threats</li>
       </ul>
     </div>
   </div>
 );
 
-const QueryPage = () => (
-  <div style={{color: 'white'}}>
-    <h1 style={{fontSize: '32px', fontWeight: 600, marginBottom: '20px'}}>Query Interface</h1>
-    <div style={{
-      background: 'rgba(255, 255, 255, 0.06)',
-      border: '1px solid rgba(255, 255, 255, 0.12)',
-      borderRadius: '12px',
-      padding: '24px',
-      backdropFilter: 'blur(20px)'
-    }}>
-      <p>🔍 Advanced query interface for Kenny's knowledge base</p>
-      <p style={{opacity: 0.7}}>Search across all your data sources and get intelligent responses.</p>
-    </div>
-  </div>
-);
-
-const HealthPage = () => (
-  <div style={{color: 'white'}}>
+const SimpleHealth = () => (
+  <div>
     <h1 style={{fontSize: '32px', fontWeight: 600, marginBottom: '20px'}}>System Health</h1>
     <div style={{
       background: 'rgba(255, 255, 255, 0.06)',
       border: '1px solid rgba(255, 255, 255, 0.12)',
       borderRadius: '12px',
-      padding: '24px',
-      backdropFilter: 'blur(20px)'
+      padding: '24px'
     }}>
       <p>❤️ All systems are healthy</p>
       <div style={{marginTop: '20px'}}>
-        <div style={{margin: '10px 0'}}>✅ API Gateway: Online</div>
-        <div style={{margin: '10px 0'}}>✅ Agent Registry: Online</div>
-        <div style={{margin: '10px 0'}}>✅ Coordinator: Online</div>
-        <div style={{margin: '10px 0'}}>✅ Database: Online</div>
-        <div style={{margin: '10px 0'}}>✅ Memory Store: Online</div>
+        <div>✅ API Gateway: Online</div>
+        <div>✅ Agent Registry: Online</div>
+        <div>✅ Coordinator: Online</div>
+        <div>✅ Database: Online</div>
       </div>
     </div>
   </div>
 );
 
-const SecurityPage = () => (
-  <div style={{color: 'white'}}>
+const SimpleSecurity = () => (
+  <div>
     <h1 style={{fontSize: '32px', fontWeight: 600, marginBottom: '20px'}}>Security Center</h1>
     <div style={{
       background: 'rgba(255, 255, 255, 0.06)',
       border: '1px solid rgba(255, 255, 255, 0.12)',
       borderRadius: '12px',
-      padding: '24px',
-      backdropFilter: 'blur(20px)'
+      padding: '24px'
     }}>
-      <p>🔒 Security monitoring and threat detection</p>
+      <p>🔒 Security monitoring active</p>
       <div style={{marginTop: '20px'}}>
-        <div style={{margin: '10px 0'}}>🛡️ Threat Level: Low</div>
-        <div style={{margin: '10px 0'}}>🔐 Encryption: Active</div>
-        <div style={{margin: '10px 0'}}>🚨 Active Alerts: 0</div>
-        <div style={{margin: '10px 0'}}>🔍 Last Scan: 2 minutes ago</div>
+        <div>🛡️ Threat Level: Low</div>
+        <div>🔐 Encryption: Active</div>
+        <div>🚨 Active Alerts: 0</div>
       </div>
     </div>
   </div>
@@ -364,20 +317,20 @@ const SecurityPage = () => (
 
 function App() {
   return (
-    <ErrorBoundary>
-      <ThemeProvider>
-        <Routes>
-          <Route path="/" element={<SimpleAppShell />}>
-            <Route index element={<SimpleDashboard />} />
-            <Route path="chat" element={<ChatPage />} />
-            <Route path="agents" element={<AgentsPage />} />
-            <Route path="query" element={<QueryPage />} />
-            <Route path="health" element={<HealthPage />} />
-            <Route path="security" element={<SecurityPage />} />
-          </Route>
-        </Routes>
-      </ThemeProvider>
-    </ErrorBoundary>
+    <div style={{
+      minHeight: '100vh',
+      background: 'radial-gradient(1200px 800px at 30% -10%, #0e3b2e 0%, #0a2a22 60%, #081f1a 100%)',
+    }}>
+      <Routes>
+        <Route path="/" element={<SimpleAppShell />}>
+          <Route index element={<SimpleDashboard />} />
+          <Route path="chat" element={<SimpleChat />} />
+          <Route path="agents" element={<SimpleAgents />} />
+          <Route path="health" element={<SimpleHealth />} />
+          <Route path="security" element={<SimpleSecurity />} />
+        </Route>
+      </Routes>
+    </div>
   );
 }
 
