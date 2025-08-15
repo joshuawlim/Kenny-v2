@@ -189,10 +189,10 @@ If it's a simple single-agent task, use route: "direct" with the specific agent 
 
             async with httpx.AsyncClient(timeout=2.0) as client:
                 response = await client.post(
-                    f"{self.ollama_url}/api/generate",
+                    f"{self.ollama_url}/api/chat",
                     json={
-                        "model": "llama3.2:3b",  # Use a small, fast model
-                        "prompt": prompt,
+                        "model": "qwen3:8b",  # Use available model
+                        "messages": [{"role": "user", "content": prompt}],
                         "stream": False,
                         "options": {
                             "temperature": 0.1,
@@ -203,7 +203,7 @@ If it's a simple single-agent task, use route: "direct" with the specific agent 
                 
                 if response.status_code == 200:
                     result = response.json()
-                    response_text = result.get("response", "")
+                    response_text = result.get("message", {}).get("content", "")
                     
                     # Try to parse JSON from response
                     import json

@@ -81,13 +81,18 @@ class KennyGateway:
                 except Exception as e:
                     logger.debug(f"Enhanced health not available: {e}")
                 
-                # Fallback to basic health
+                # Fallback to basic health with local agent counts
+                total_agents = len(self._agents_cache)
+                healthy_agents = sum(1 for agent in self._agents_cache.values() if agent.is_healthy)
+                unhealthy_agents = total_agents - healthy_agents
+                total_capabilities = len(self._capabilities_cache)
+                
                 return SystemHealth(
                     status=health_data.get("status", "unknown"),
-                    total_agents=health_data.get("total_agents", 0),
-                    healthy_agents=health_data.get("healthy_agents", 0),
-                    unhealthy_agents=health_data.get("unhealthy_agents", 0),
-                    total_capabilities=health_data.get("total_capabilities", 0),
+                    total_agents=total_agents,
+                    healthy_agents=healthy_agents,
+                    unhealthy_agents=unhealthy_agents,
+                    total_capabilities=total_capabilities,
                     timestamp=health_data.get("timestamp", datetime.now().isoformat())
                 )
             else:
@@ -95,12 +100,18 @@ class KennyGateway:
                 
         except Exception as e:
             logger.error(f"Failed to get system health: {e}")
+            # Use local cache even in error case
+            total_agents = len(self._agents_cache)
+            healthy_agents = sum(1 for agent in self._agents_cache.values() if agent.is_healthy)
+            unhealthy_agents = total_agents - healthy_agents
+            total_capabilities = len(self._capabilities_cache)
+            
             return SystemHealth(
                 status="error",
-                total_agents=0,
-                healthy_agents=0,
-                unhealthy_agents=0,
-                total_capabilities=0,
+                total_agents=total_agents,
+                healthy_agents=healthy_agents,
+                unhealthy_agents=unhealthy_agents,
+                total_capabilities=total_capabilities,
                 timestamp=datetime.now().isoformat()
             )
     
@@ -283,14 +294,16 @@ class KennyGateway:
                 # Extract coordinator response properly
                 coordinator_result = result.get("result", {})
                 
+                # Extract the actual conversational message from coordinator results
+                actual_message = self._extract_conversational_message(coordinator_result)
+                
                 return {
                     "request_id": f"coord_{int(start_time * 1000)}",
                     "result": {
+                        "message": actual_message,
                         "intent": coordinator_result.get("intent", "unknown"),
                         "plan": coordinator_result.get("plan", []),
                         "execution_path": coordinator_result.get("execution_path", []),
-                        "results": coordinator_result.get("results", {}),
-                        "errors": coordinator_result.get("errors", []),
                         "status": result.get("status", "unknown")
                     },
                     "execution_path": coordinator_result.get("execution_path", []),
@@ -431,7 +444,9 @@ class KennyGateway:
                 agents_data = agents_response.json()
                 
                 self._agents_cache = {}
-                for agent_data in agents_data.get("agents", []):
+                # Handle both list format (current) and dict format (for compatibility)
+                agents_list = agents_data if isinstance(agents_data, list) else agents_data.get("agents", [])
+                for agent_data in agents_list:
                     agent = AgentInfo(
                         agent_id=agent_data.get("agent_id", ""),
                         display_name=agent_data.get("display_name"),
@@ -449,15 +464,29 @@ class KennyGateway:
                 capabilities_data = capabilities_response.json()
                 
                 self._capabilities_cache = []
-                for cap_data in capabilities_data.get("capabilities", []):
-                    capability = CapabilityInfo(
-                        verb=cap_data.get("verb", ""),
-                        agent_id=cap_data.get("agent_id", ""),
-                        agent_name=cap_data.get("agent_name", ""),
-                        description=cap_data.get("description"),
-                        safety_annotations=cap_data.get("safety_annotations", [])
-                    )
-                    self._capabilities_cache.append(capability)
+                # Handle dict format (current) where capabilities are grouped by verb
+                if isinstance(capabilities_data, dict):
+                    for verb, capability_list in capabilities_data.items():
+                        for cap_data in capability_list:
+                            capability = CapabilityInfo(
+                                verb=cap_data.get("verb", ""),
+                                agent_id=cap_data.get("agent_id", ""),
+                                agent_name=cap_data.get("agent_name", ""),
+                                description=cap_data.get("description"),
+                                safety_annotations=cap_data.get("safety_annotations", [])
+                            )
+                            self._capabilities_cache.append(capability)
+                else:
+                    # Handle list format (for compatibility)
+                    for cap_data in capabilities_data.get("capabilities", []):
+                        capability = CapabilityInfo(
+                            verb=cap_data.get("verb", ""),
+                            agent_id=cap_data.get("agent_id", ""),
+                            agent_name=cap_data.get("agent_name", ""),
+                            description=cap_data.get("description"),
+                            safety_annotations=cap_data.get("safety_annotations", [])
+                        )
+                        self._capabilities_cache.append(capability)
             
             self._cache_timestamp = asyncio.get_event_loop().time()
             logger.debug("Gateway cache refreshed successfully")
@@ -465,6 +494,80 @@ class KennyGateway:
         except Exception as e:
             logger.error(f"Failed to refresh cache: {e}")
             # Keep existing cache if refresh fails
+    
+    def _extract_conversational_message(self, coordinator_result: Dict[str, Any]) -> str:
+        """Extract the actual conversational message from coordinator results"""
+        try:
+            # Try to get the message from execution results
+            results = coordinator_result.get("results", {})
+            execution_results = results.get("execution_results", [])
+            
+            raw_message = ""
+            if execution_results and len(execution_results) > 0:
+                first_result = execution_results[0]
+                if isinstance(first_result, dict):
+                    result_data = first_result.get("result", {})
+                    if isinstance(result_data, dict) and "message" in result_data:
+                        raw_message = result_data["message"]
+            
+            # Fallback: try to get from general_processing
+            if not raw_message:
+                general_processing = results.get("general_processing", {})
+                if isinstance(general_processing, dict):
+                    result_data = general_processing.get("result", {})
+                    if isinstance(result_data, dict) and "message" in result_data:
+                        raw_message = result_data["message"]
+            
+            # If we found a raw message, enhance it with Kenny's personality
+            if raw_message:
+                return self._add_kenny_personality(raw_message)
+            
+            # Last fallback: return a Kenny-style response
+            return "Hey there! I got your message but I'm having a bit of trouble processing it right now. Could you try rephrasing that for me?"
+            
+        except Exception as e:
+            logger.warning(f"Failed to extract conversational message: {e}")
+            return "Oops! Something went sideways on my end. Mind giving that another shot?"
+    
+    def _add_kenny_personality(self, raw_message: str) -> str:
+        """Add Kenny's personality and character to raw responses"""
+        try:
+            # Kenny's personality traits: helpful, casual, tech-savvy, efficient, friendly
+            
+            # Handle different types of generic responses
+            if "Processed:" in raw_message:
+                # Transform generic "Processed: X" responses
+                user_input = raw_message.replace("Processed: ", "").strip()
+                
+                if any(greeting in user_input.lower() for greeting in ["hello", "hi", "hey"]):
+                    return f"Hey there! 👋 Good to see you. I'm Kenny, your personal assistant. What can I help you with today?"
+                
+                elif "kenny" in user_input.lower():
+                    return f"That's me! I'm Kenny, your multi-agent personal assistant. I can help you with emails, contacts, calendar, messages, and more. What would you like to do?"
+                
+                elif any(question in user_input.lower() for question in ["help", "what can you do", "capabilities"]):
+                    return "I'm Kenny! I can help you with loads of things - searching emails, finding contacts, checking your calendar, reading messages, and even coordinating complex tasks across multiple services. Just tell me what you need!"
+                
+                else:
+                    return f"Got it! I processed your request: '{user_input}'. Is there anything specific you'd like me to help you with?"
+            
+            # Handle other response types
+            elif "success" in raw_message.lower():
+                return f"✅ All done! {raw_message.replace('Success', 'Successfully handled that').replace('success', 'took care of that')}"
+            
+            elif "error" in raw_message.lower() or "failed" in raw_message.lower():
+                return f"Hmm, ran into a snag there. {raw_message} Want me to try a different approach?"
+            
+            elif raw_message.strip() == "" or raw_message.lower() == "ok":
+                return "All set! Anything else I can help you with?"
+            
+            # For other responses, just add a friendly Kenny touch
+            return f"{raw_message} Let me know if you need anything else!"
+            
+        except Exception as e:
+            logger.warning(f"Failed to add Kenny personality: {e}")
+            # Fallback to original message if personality enhancement fails
+            return raw_message
     
     def _initialize_mock_data(self):
         """Initialize mock data for standalone testing"""
