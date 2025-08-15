@@ -4,7 +4,7 @@ import logging
 from typing import Dict, List, Pattern
 import httpx
 
-from schemas import RoutingDecision, RoutingType
+from .schemas import RoutingDecision, RoutingType
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,11 @@ class IntentClassifier:
         self.coordinator_triggers = [
             "and then", "also", "combine", "both", 
             "follow up", "create event", "send message",
-            "schedule", "propose", "draft", "compose"
+            "schedule", "propose", "draft", "compose",
+            "find and", "search and", "check and",
+            "multiple", "several", "various", "across",
+            "workflow", "sequence", "steps", "chain",
+            "coordinate", "orchestrate", "integrate"
         ]
         
         # Ollama client for complex classification
@@ -77,13 +81,17 @@ class IntentClassifier:
                     )
             
             # Tier 2: Multi-agent triggers
-            if any(trigger in query.lower() for trigger in self.coordinator_triggers):
+            coordinator_trigger_count = sum(1 for trigger in self.coordinator_triggers if trigger in query.lower())
+            if coordinator_trigger_count > 0:
                 duration_ms = int((asyncio.get_event_loop().time() - start_time) * 1000)
+                
+                # Higher confidence for multiple triggers
+                confidence = min(0.95, 0.7 + (coordinator_trigger_count * 0.1))
                 
                 return RoutingDecision(
                     route=RoutingType.COORDINATOR,
                     intent="multi_agent_workflow",
-                    confidence=0.8,
+                    confidence=confidence,
                     duration_ms=duration_ms
                 )
             

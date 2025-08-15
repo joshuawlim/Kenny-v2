@@ -7,9 +7,9 @@ import asyncio
 import logging
 import json
 
-from gateway import KennyGateway
-from routing import IntentClassifier
-from schemas import QueryRequest, QueryResponse, AgentRequest
+from .gateway import KennyGateway
+from .routing import IntentClassifier
+from .schemas import QueryRequest, QueryResponse, AgentRequest
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -224,23 +224,53 @@ async def websocket_endpoint(websocket: WebSocket):
             }))
             
             if routing_decision.route == "coordinator":
-                # Stream coordinator results
-                async for update in gateway.orchestrate_request_stream(query, context):
-                    await websocket.send_text(json.dumps(update))
+                # Stream coordinator results with proper error handling
+                try:
+                    async for update in gateway.orchestrate_request_stream(query, context):
+                        await websocket.send_text(json.dumps(update))
+                        
+                        # Send completion signal when we get final_result
+                        if update.get("type") == "final_result":
+                            await websocket.send_text(json.dumps({
+                                "type": "complete",
+                                "message": "Coordinator workflow completed",
+                                "timestamp": asyncio.get_event_loop().time()
+                            }))
+                            break
+                except Exception as e:
+                    await websocket.send_text(json.dumps({
+                        "type": "error",
+                        "message": f"Coordinator streaming error: {str(e)}",
+                        "timestamp": asyncio.get_event_loop().time()
+                    }))
             else:
                 # Direct agent call
-                result = await gateway.call_agent_direct(
-                    agent_id=routing_decision.agent_id,
-                    capability=routing_decision.capability,
-                    parameters=routing_decision.parameters
-                )
-                
-                await websocket.send_text(json.dumps({
-                    "type": "result",
-                    "agent_id": routing_decision.agent_id,
-                    "result": result,
-                    "timestamp": asyncio.get_event_loop().time()
-                }))
+                try:
+                    result = await gateway.call_agent_direct(
+                        agent_id=routing_decision.agent_id,
+                        capability=routing_decision.capability,
+                        parameters=routing_decision.parameters
+                    )
+                    
+                    await websocket.send_text(json.dumps({
+                        "type": "result",
+                        "agent_id": routing_decision.agent_id,
+                        "capability": routing_decision.capability,
+                        "result": result,
+                        "timestamp": asyncio.get_event_loop().time()
+                    }))
+                    
+                    await websocket.send_text(json.dumps({
+                        "type": "complete",
+                        "message": "Direct agent call completed",
+                        "timestamp": asyncio.get_event_loop().time()
+                    }))
+                except Exception as e:
+                    await websocket.send_text(json.dumps({
+                        "type": "error",
+                        "message": f"Direct agent error: {str(e)}",
+                        "timestamp": asyncio.get_event_loop().time()
+                    }))
             
     except WebSocketDisconnect:
         logger.info("WebSocket client disconnected")

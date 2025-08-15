@@ -11,6 +11,10 @@ import httpx
 from .coordinator import Coordinator
 from .policy.engine import PolicyEngine
 
+# Configure logging first
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # Try to import tracing from agent SDK
 try:
     from kenny_agent import init_tracing, TracingMiddleware, AsyncSpanContext, SpanType
@@ -19,9 +23,6 @@ except ImportError:
     TRACING_AVAILABLE = False
     logger.warning("Tracing not available - install agent SDK for full observability")
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Kenny v2 Coordinator",
@@ -283,4 +284,4 @@ async def add_policy_rule(rule: Dict[str, Any]) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    uvicorn.run(app, host="0.0.0.0", port=8002)

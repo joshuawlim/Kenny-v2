@@ -4,7 +4,7 @@ from typing import Dict, Any, List, Optional, AsyncGenerator
 import httpx
 from datetime import datetime
 
-from schemas import AgentInfo, CapabilityInfo, SystemHealth
+from .schemas import AgentInfo, CapabilityInfo, SystemHealth
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +13,7 @@ class KennyGateway:
     
     def __init__(self):
         self.agent_registry_url = "http://localhost:8001"
-        self.coordinator_url = "http://localhost:3000"
+        self.coordinator_url = "http://localhost:8002"
         self.http_client: Optional[httpx.AsyncClient] = None
         
         # Cache for performance
@@ -254,12 +254,15 @@ class KennyGateway:
     
     async def orchestrate_request(self, query: str, context: Dict[str, Any]) -> Dict[str, Any]:
         """Orchestrate request through coordinator"""
+        start_time = asyncio.get_event_loop().time()
+        
         try:
             if not self.http_client:
                 raise RuntimeError("Gateway not initialized")
             
             # Check if coordinator is available
             if not await self._is_coordinator_available():
+                logger.warning("Coordinator unavailable, using mock response")
                 return self._mock_coordinator_response(query, context)
             
             request_data = {
@@ -275,18 +278,44 @@ class KennyGateway:
             
             if response.status_code == 200:
                 result = response.json()
+                duration_ms = int((asyncio.get_event_loop().time() - start_time) * 1000)
+                
+                # Extract coordinator response properly
+                coordinator_result = result.get("result", {})
+                
                 return {
-                    "request_id": f"coord_{asyncio.get_event_loop().time()}",
-                    "result": result.get("result", {}),
-                    "execution_path": result.get("result", {}).get("execution_path", []),
-                    "duration_ms": 0  # TODO: Add timing
+                    "request_id": f"coord_{int(start_time * 1000)}",
+                    "result": {
+                        "intent": coordinator_result.get("intent", "unknown"),
+                        "plan": coordinator_result.get("plan", []),
+                        "execution_path": coordinator_result.get("execution_path", []),
+                        "results": coordinator_result.get("results", {}),
+                        "errors": coordinator_result.get("errors", []),
+                        "status": result.get("status", "unknown")
+                    },
+                    "execution_path": coordinator_result.get("execution_path", []),
+                    "duration_ms": duration_ms
                 }
             else:
                 raise Exception(f"Coordinator call failed: {response.status_code} - {response.text}")
                 
         except Exception as e:
             logger.error(f"Coordinator orchestration failed: {e}")
-            raise
+            # Return error response instead of raising
+            duration_ms = int((asyncio.get_event_loop().time() - start_time) * 1000)
+            return {
+                "request_id": f"error_{int(start_time * 1000)}",
+                "result": {
+                    "intent": "error",
+                    "plan": [],
+                    "execution_path": [],
+                    "results": {},
+                    "errors": [str(e)],
+                    "status": "error"
+                },
+                "execution_path": [],
+                "duration_ms": duration_ms
+            }
     
     async def _is_coordinator_available(self) -> bool:
         """Check if coordinator is available"""
@@ -329,6 +358,16 @@ class KennyGateway:
             if not self.http_client:
                 raise RuntimeError("Gateway not initialized")
             
+            # Check if coordinator is available
+            if not await self._is_coordinator_available():
+                logger.warning("Coordinator unavailable for streaming")
+                yield {
+                    "type": "error",
+                    "message": "Coordinator service unavailable",
+                    "timestamp": asyncio.get_event_loop().time()
+                }
+                return
+            
             request_data = {
                 "user_input": query,
                 "context": context
@@ -342,7 +381,12 @@ class KennyGateway:
             ) as response:
                 
                 if response.status_code != 200:
-                    raise Exception(f"Coordinator stream failed: {response.status_code}")
+                    yield {
+                        "type": "error",
+                        "message": f"Coordinator stream failed: {response.status_code}",
+                        "timestamp": asyncio.get_event_loop().time()
+                    }
+                    return
                 
                 async for line in response.aiter_lines():
                     if line.startswith("data: "):
@@ -350,7 +394,8 @@ class KennyGateway:
                             import json
                             data = json.loads(line[6:])  # Remove "data: " prefix
                             yield data
-                        except json.JSONDecodeError:
+                        except json.JSONDecodeError as e:
+                            logger.debug(f"Failed to parse streaming data: {line}, error: {e}")
                             continue
                         
         except Exception as e:

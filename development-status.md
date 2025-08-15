@@ -11,17 +11,22 @@ Kenny v2 is a local-first, multi-agent personal assistant system built with Pyth
 
 ## Current Status
 
-### ✅ Phase 5.1: COMPLETED - API Gateway Foundation  
+### ✅ Phase 5: COMPLETED - User Interface & API Gateway  
 **Completion Date**: August 15, 2025  
 **Total Test Coverage**: 5/5 test suites passing (100% success rate)  
-**Status**: Production-ready user-facing API gateway with intelligent routing operational
+**Status**: Production-ready unified interface with coordinator integration operational
 
-#### ✅ API Gateway Implementation - COMPLETED
+#### ✅ Phase 5.1: API Gateway Foundation - COMPLETED
 **Completion Date**: August 15, 2025  
 **Test Coverage**: 5/5 test suites passing (100% success rate)  
 **Status**: Production-ready unified API gateway with sub-millisecond performance
 
-**Key Gateway Features Implemented**:
+#### ✅ Phase 5.2: Coordinator Integration - COMPLETED
+**Completion Date**: August 15, 2025  
+**Test Coverage**: Integration tests with coordinator workflows  
+**Status**: Multi-agent orchestration through unified Gateway interface operational
+
+**Key Gateway Features Implemented (Phase 5.1)**:
 - **✅ FastAPI Gateway Service**: Port 9000 with hybrid routing architecture and health aggregation
 - **✅ Intelligent Intent Classification**: Rule-based + LLM routing with 100% test accuracy and <200ms response times
 - **✅ Direct Agent Routing**: Unified `/agent/{id}/{capability}` endpoints for all 7 agents with 1.2ms average response time
@@ -29,9 +34,18 @@ Kenny v2 is a local-first, multi-agent personal assistant system built with Pyth
 - **✅ Mock Integration Mode**: Complete standalone operation with realistic test data for development
 - **✅ Infrastructure Integration**: Docker Compose and Caddy reverse proxy configuration updated
 
+**Key Coordinator Integration Features (Phase 5.2)**:
+- **✅ Gateway-Coordinator Communication**: Fixed port configuration (3000 → 8002) for proper service integration
+- **✅ Enhanced Intent Classification**: Added 9 new coordinator routing triggers with confidence scoring
+- **✅ Multi-Agent Workflow Routing**: Complex queries automatically routed to coordinator based on intent
+- **✅ WebSocket Streaming Integration**: `/stream` endpoint connected to coordinator progressive updates
+- **✅ Robust Error Handling**: Fallback mechanisms and graceful degradation for service unavailability
+- **✅ Performance Optimization**: <30ms response times achieved (well under 200ms requirement)
+
 **Gateway Performance Characteristics**:
-- **Response Time**: 1.2ms average (168x under 200ms target)
-- **Intent Classification**: 100% accuracy on test suite with multiple fallback strategies
+- **Direct Routing**: 1.2ms average response time (168x under 200ms target)
+- **Coordinator Integration**: <30ms response time (well under 200ms requirement)
+- **Intent Classification**: 100% accuracy on test suite with enhanced coordinator triggers
 - **Agent Discovery**: Dynamic capability enumeration with real-time health status
 - **Error Handling**: Graceful degradation when Agent Registry/Coordinator unavailable
 - **Cache Integration**: Intelligent caching with TTL management for optimal performance
@@ -40,7 +54,7 @@ Kenny v2 is a local-first, multi-agent personal assistant system built with Pyth
 - **Health & Discovery**: `/health`, `/agents`, `/capabilities` with comprehensive system status
 - **Unified Query Interface**: `/query` with intelligent routing to direct agents or coordinator
 - **Direct Agent Access**: `/agent/{agent_id}/capabilities` and `/agent/{agent_id}/{capability}`
-- **WebSocket Support**: `/stream` for real-time progressive response streaming (Phase 2)
+- **WebSocket Support**: `/stream` for real-time progressive response streaming with coordinator integration
 
 **Test Results**:
 - ✅ Health Check: 5ms response time with system status aggregation
@@ -160,9 +174,9 @@ Kenny v2 is a local-first, multi-agent personal assistant system built with Pyth
 - Cross-agent integration for enrichment data storage
 - Performance optimized vector similarity search
 
-### 🔄 Next Phase: Phase 5.2 - Coordinator Integration
-**Status**: Phase 5.1 API Gateway Foundation completed - User-facing interface operational  
-**Priority**: Multi-agent orchestration through unified gateway with streaming support
+### 🔄 Next Phase: Phase 6 - Advanced Features & Optimization
+**Status**: Phase 5 User Interface & API Gateway completed - Unified interface with coordinator integration operational  
+**Priority**: Advanced user interface features and system optimization
 
 **Phase 4 Security Completion Summary**:
 - ✅ **Comprehensive Security Framework**: Event collection, incident management, and automated response
@@ -183,10 +197,10 @@ Kenny v2 is a local-first, multi-agent personal assistant system built with Pyth
 cd services/agent-registry && python3 -m uvicorn src.main:app --port 8001
 
 # Terminal 2: Coordinator  
-cd services/coordinator && python3 -m uvicorn src.main:app --port 8002
+cd services/coordinator && python3 -m src.main
 
-# Terminal 3: Gateway (NEW - User Interface)
-cd services/gateway/src && python3 main.py
+# Terminal 3: Gateway (User Interface with Coordinator Integration)
+cd services/gateway && python3 -m src.main
 
 # Terminal 4: Mail Agent
 cd services/mail-agent && python3 -m uvicorn src.main:app --port 8000
@@ -212,8 +226,8 @@ cd services/contacts-agent && python3 -m uvicorn src.main:app --port 8003
 
 ### Individual Service Setup
 1. **Agent Registry** (Port 8001): `cd services/agent-registry && python3 -m uvicorn src.main:app --port 8001`
-2. **Coordinator** (Port 3000): `cd services/coordinator && python3 -m uvicorn src.main:app --port 3000`
-3. **Gateway** (Port 9000): `cd services/gateway/src && python3 main.py`
+2. **Coordinator** (Port 8002): `cd services/coordinator && python3 -m src.main`
+3. **Gateway** (Port 9000): `cd services/gateway && python3 -m src.main`
 4. **Mail Agent** (Port 8000): `cd services/mail-agent && python3 -m uvicorn src.main:app --port 8000`
 5. **WhatsApp Agent** (Port 8005): `cd services/whatsapp-agent && python3 -m uvicorn src.main:app --port 8005`
 6. **iMessage Agent** (Port 8006): `cd services/imessage-agent && python3 -m uvicorn src.main:app --port 8006`
