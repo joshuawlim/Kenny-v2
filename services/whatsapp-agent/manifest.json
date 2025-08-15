@@ -1,0 +1,36 @@
+{
+  "agent_id": "whatsapp-agent",
+  "version": "1.0.0",
+  "display_name": "WhatsApp Agent",
+  "description": "Read-only WhatsApp message search and basic operations",
+  "capabilities": [
+    {
+      "verb": "messages.search",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {"type": "string"},
+          "limit": {"type": "integer", "default": 20},
+          "since": {"type": "string", "format": "date-time"}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "results": {"type": "array"},
+          "count": {"type": "integer"}
+        }
+      },
+      "safety_annotations": ["read-only"],
+      "description": "Search WhatsApp messages with optional filters"
+    }
+  ],
+  "data_scopes": ["whatsapp:messages", "whatsapp:media"],
+  "tool_access": ["macos-bridge", "sqlite-db"],
+  "egress_domains": [],
+  "health_check": {
+    "endpoint": "/health",
+    "interval_seconds": 60,
+    "timeout_seconds": 10
+  }
+}
