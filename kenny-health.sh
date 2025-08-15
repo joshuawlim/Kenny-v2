@@ -39,19 +39,19 @@ get_service_field() {
 
 # Utility functions
 log() {
-    echo -e "${GREEN}✓ $1${NC}"
+    printf "${GREEN}✓ $1${NC}\n"
 }
 
 warn() {
-    echo -e "${YELLOW}⚠ $1${NC}"
+    printf "${YELLOW}⚠ $1${NC}\n"
 }
 
 error() {
-    echo -e "${RED}✗ $1${NC}"
+    printf "${RED}✗ $1${NC}\n"
 }
 
 info() {
-    echo -e "${BLUE}ℹ $1${NC}"
+    printf "${BLUE}ℹ $1${NC}\n"
 }
 
 # Check if service process is running
@@ -228,7 +228,7 @@ check_dependencies() {
 
 # Main health check
 main() {
-    echo -e "${BLUE}"
+    printf "${BLUE}"
     cat << "EOF"
  _  __                         _   _            _ _   _     
 | |/ /__ _ __  _ __  _   _     | | | | ___  __ _| | |_| |__  
@@ -237,14 +237,14 @@ main() {
 |_|\_\___|_| |_|_| |_|\__, |   |_| |_|\___|\__,_|_|\__|_| |_|
                      |___/                                 
 EOF
-    echo -e "${NC}"
+    printf "${NC}\n"
     
     info "Kenny v2.0 System Health Check"
     info "Timestamp: $(date)"
     echo
     
     # Service Status Table
-    echo -e "${BLUE}=== Service Status ===${NC}"
+    printf "${BLUE}=== Service Status ===${NC}\n"
     printf "%-20s %-10s %-10s %-10s %-10s\n" "Service" "Process" "HTTP" "Memory" "Uptime"
     printf "%-20s %-10s %-10s %-10s %-10s\n" "-------" "-------" "----" "------" "------"
     
@@ -297,7 +297,7 @@ EOF
     echo
     
     # Summary
-    echo -e "${BLUE}=== System Summary ===${NC}"
+    printf "${BLUE}=== System Summary ===${NC}\n"
     log "Services Running: $running_services/$total_services"
     log "Services Healthy: $healthy_services/$total_services"
     
@@ -313,19 +313,19 @@ EOF
     echo
     
     # External Dependencies
-    echo -e "${BLUE}=== Dependencies Check ===${NC}"
+    printf "${BLUE}=== Dependencies Check ===${NC}\n"
     check_dependencies
     echo
     
     # Functionality Tests (only if services are running)
     if [ $running_services -gt 0 ]; then
-        echo -e "${BLUE}=== Functionality Tests ===${NC}"
+        printf "${BLUE}=== Functionality Tests ===${NC}\n"
         test_kenny_functionality
         echo
     fi
     
     # Quick Access URLs
-    echo -e "${BLUE}=== Quick Access ===${NC}"
+    printf "${BLUE}=== Quick Access ===${NC}\n"
     echo "• Main Dashboard: http://localhost:3001"
     echo "• Chat Interface: http://localhost:3001/query"
     echo "• API Gateway: http://localhost:9000"
@@ -336,7 +336,7 @@ EOF
     
     # Troubleshooting hints
     if [ $healthy_services -lt $total_services ]; then
-        echo -e "${YELLOW}=== Troubleshooting Hints ===${NC}"
+        printf "${YELLOW}=== Troubleshooting Hints ===${NC}\n"
         warn "If services are not healthy:"
         echo "  1. Check logs in: $KENNY_ROOT/logs/"
         echo "  2. Verify ports are not in use by other applications"
@@ -345,7 +345,7 @@ EOF
         echo "  5. Check macOS permissions for Terminal/iTerm"
     fi
     
-    echo -e "${GREEN}Health check completed!${NC}"
+    printf "${GREEN}Health check completed!${NC}\n"
 }
 
 # Run main function

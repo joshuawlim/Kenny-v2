@@ -36,7 +36,7 @@ mkdir -p "$LOG_DIR" "$PID_DIR"
 
 # Cleanup function
 cleanup() {
-    echo -e "${YELLOW}Kenny is shutting down...${NC}"
+    printf "${YELLOW}Kenny is shutting down...${NC}\n"
     ./kenny-stop.sh 2>/dev/null || true
     exit 0
 }
@@ -44,19 +44,19 @@ trap cleanup SIGINT SIGTERM
 
 # Utility functions
 log() {
-    echo -e "${GREEN}[$(date +'%H:%M:%S')] $1${NC}"
+    printf "${GREEN}[$(date +'%H:%M:%S')] %s${NC}\n" "$1"
 }
 
 warn() {
-    echo -e "${YELLOW}[$(date +'%H:%M:%S')] WARNING: $1${NC}"
+    printf "${YELLOW}[$(date +'%H:%M:%S')] WARNING: %s${NC}\n" "$1"
 }
 
 error() {
-    echo -e "${RED}[$(date +'%H:%M:%S')] ERROR: $1${NC}"
+    printf "${RED}[$(date +'%H:%M:%S')] ERROR: %s${NC}\n" "$1"
 }
 
 info() {
-    echo -e "${BLUE}[$(date +'%H:%M:%S')] $1${NC}"
+    printf "${BLUE}[$(date +'%H:%M:%S')] %s${NC}\n" "$1"
 }
 
 # Check if port is available
@@ -135,7 +135,7 @@ check_service() {
 }
 
 # Display banner
-echo -e "${BLUE}"
+printf "${BLUE}"
 cat << "EOF"
  _  __                         ____  
 | |/ /__ _ __  _ __  _   _     |___ \ 
@@ -145,13 +145,13 @@ cat << "EOF"
                      |___/          
 Local-First Multi-Agent Personal Assistant
 EOF
-echo -e "${NC}"
+printf "${NC}\n"
 
 info "Kenny v2.0 Launch Process Starting..."
 info "Kenny Root Directory: $KENNY_ROOT"
 
 # Phase 1: Prerequisites Check
-echo -e "\n${BLUE}=== Phase 1: Prerequisites Check ===${NC}"
+printf "\n${BLUE}=== Phase 1: Prerequisites Check ===${NC}\n"
 
 # Check if we're in the right directory
 if [ ! -f "$KENNY_ROOT/PROJECT_STATUS.md" ]; then
@@ -195,7 +195,7 @@ else
 fi
 
 # Check port availability
-echo -e "\n${BLUE}=== Phase 2: Port Availability Check ===${NC}"
+printf "\n${BLUE}=== Phase 2: Port Availability Check ===${NC}\n"
 check_port $AGENT_REGISTRY_PORT "Agent Registry" || exit 1
 check_port $COORDINATOR_PORT "Coordinator" || exit 1  
 check_port $GATEWAY_PORT "Gateway" || exit 1
@@ -211,7 +211,7 @@ check_port $CALENDAR_AGENT_PORT "Calendar Agent" || exit 1
 log "All required ports are available"
 
 # Phase 3: Agent SDK Installation
-echo -e "\n${BLUE}=== Phase 3: Agent SDK Setup ===${NC}"
+printf "\n${BLUE}=== Phase 3: Agent SDK Setup ===${NC}\n"
 if [ -d "$KENNY_ROOT/services/agent-sdk" ]; then
     cd "$KENNY_ROOT/services/agent-sdk"
     if [ ! -f "kenny_agent_sdk.egg-info/PKG-INFO" ]; then
@@ -227,7 +227,7 @@ else
 fi
 
 # Phase 4: Dashboard Dependencies
-echo -e "\n${BLUE}=== Phase 4: Dashboard Dependencies ===${NC}"
+printf "\n${BLUE}=== Phase 4: Dashboard Dependencies ===${NC}\n"
 if [ -d "$KENNY_ROOT/services/dashboard" ]; then
     cd "$KENNY_ROOT/services/dashboard"
     if [ ! -d "node_modules" ]; then
@@ -241,7 +241,7 @@ if [ -d "$KENNY_ROOT/services/dashboard" ]; then
 fi
 
 # Phase 5: Service Startup
-echo -e "\n${BLUE}=== Phase 5: Starting Core Services ===${NC}"
+printf "\n${BLUE}=== Phase 5: Starting Core Services ===${NC}\n"
 
 # Step 1: Start Agent Registry (foundational service)
 start_service "agent-registry" \
@@ -268,7 +268,7 @@ start_service "gateway" \
 wait_for_service "http://localhost:$GATEWAY_PORT/health" "Gateway" || exit 1
 
 # Phase 6: Start Agents
-echo -e "\n${BLUE}=== Phase 6: Starting Agents ===${NC}"
+printf "\n${BLUE}=== Phase 6: Starting Agents ===${NC}\n"
 
 # Start Bridge (needed for live data)
 start_service "bridge" \
@@ -306,7 +306,7 @@ start_service "calendar-agent" \
 info "Agents starting up... (this takes a moment)"
 
 # Phase 7: Start Dashboard
-echo -e "\n${BLUE}=== Phase 7: Starting Dashboard ===${NC}"
+printf "\n${BLUE}=== Phase 7: Starting Dashboard ===${NC}\n"
 
 start_service "dashboard" \
     "npm run dev" \
@@ -316,7 +316,7 @@ start_service "dashboard" \
 wait_for_service "http://localhost:$DASHBOARD_PORT" "Dashboard" 20 || warn "Dashboard may need more time to start"
 
 # Phase 8: Final Health Check
-echo -e "\n${BLUE}=== Phase 8: System Health Check ===${NC}"
+printf "\n${BLUE}=== Phase 8: System Health Check ===${NC}\n"
 
 sleep 3  # Give services a moment to fully initialize
 
@@ -333,26 +333,26 @@ else
 fi
 
 # Success!
-echo -e "\n${GREEN}🎉 Kenny v2.0 is now running!${NC}"
+printf "\n${GREEN}🎉 Kenny v2.0 is now running!${NC}\n"
 echo
-echo -e "${BLUE}Access Kenny:${NC}"
+printf "${BLUE}Access Kenny:${NC}\n"
 echo "• Dashboard: http://localhost:$DASHBOARD_PORT"
 echo "• Chat Interface: http://localhost:$DASHBOARD_PORT/query"
 echo "• API Gateway: http://localhost:$GATEWAY_PORT"
 echo "• System Health: http://localhost:$AGENT_REGISTRY_PORT/security/ui"
 echo
-echo -e "${BLUE}Quick Commands:${NC}"
+printf "${BLUE}Quick Commands:${NC}\n"
 echo "• Health Check: ./kenny-health.sh"
 echo "• Service Status: ./kenny-status.sh"  
 echo "• Stop Kenny: ./kenny-stop.sh"
 echo
-echo -e "${YELLOW}Logs are available in: $LOG_DIR${NC}"
-echo -e "${YELLOW}PIDs are tracked in: $PID_DIR${NC}"
+printf "${YELLOW}Logs are available in: $LOG_DIR${NC}\n"
+printf "${YELLOW}PIDs are tracked in: $PID_DIR${NC}\n"
 echo
 
 info "Try asking Kenny: 'Show me my recent emails' or 'What meetings do I have today?'"
 info "Kenny is ready to help! 🤖"
 
 # Keep the script running to maintain services
-echo -e "${BLUE}Kenny is running in the foreground. Press Ctrl+C to stop all services.${NC}"
+printf "${BLUE}Kenny is running in the foreground. Press Ctrl+C to stop all services.${NC}\n"
 wait

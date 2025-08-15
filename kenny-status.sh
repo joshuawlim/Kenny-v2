@@ -33,19 +33,19 @@ SERVICES=(
 
 # Utility functions
 log() {
-    echo -e "${GREEN}✓ $1${NC}"
+    printf "${GREEN}✓ $1${NC}\n"
 }
 
 warn() {
-    echo -e "${YELLOW}⚠ $1${NC}"
+    printf "${YELLOW}⚠ $1${NC}\n"
 }
 
 error() {
-    echo -e "${RED}✗ $1${NC}"
+    printf "${RED}✗ $1${NC}\n"
 }
 
 info() {
-    echo -e "${BLUE}ℹ $1${NC}"
+    printf "${BLUE}ℹ $1${NC}\n"
 }
 
 # Parse service configuration
@@ -197,8 +197,8 @@ display_status_table() {
     local show_header=${1:-true}
     
     if [ "$show_header" = "true" ]; then
-        echo -e "${BLUE}=== Kenny v2.0 Service Status ===${NC}"
-        echo -e "${CYAN}Updated: $(date)${NC}"
+        printf "${BLUE}=== Kenny v2.0 Service Status ===${NC}\n"
+        printf "${CYAN}Updated: $(date)${NC}\n"
         echo
     fi
     
@@ -299,24 +299,26 @@ display_status_table() {
         printf "%-8s " "${cpu}%"
         printf "%-10s\n" "$uptime"
         
-    done < <(sort_services_by_priority)
+    done <<EOF
+$(sort_services_by_priority)
+EOF
     
     echo
     
     # Status summary
-    echo -e "${BLUE}=== System Summary ===${NC}"
-    echo -e "Services Running: ${GREEN}$running_services${NC}/$total_services"
-    echo -e "Services Healthy: ${GREEN}$healthy_services${NC}/$total_services"
+    printf "${BLUE}=== System Summary ===${NC}\n"
+    printf "Services Running: ${GREEN}$running_services${NC}/$total_services\n"
+    printf "Services Healthy: ${GREEN}$healthy_services${NC}/$total_services\n"
     
     if [ $critical_down -gt 0 ]; then
-        echo -e "Critical Services Down: ${RED}$critical_down${NC}"
-        echo -e "System Status: ${RED}CRITICAL${NC}"
+        printf "Critical Services Down: ${RED}$critical_down${NC}\n"
+        printf "System Status: ${RED}CRITICAL${NC}\n"
     elif [ $running_services -eq $total_services ] && [ $healthy_services -eq $total_services ]; then
-        echo -e "System Status: ${GREEN}OPERATIONAL${NC} 🎉"
+        printf "System Status: ${GREEN}OPERATIONAL${NC} 🎉\n"
     elif [ $running_services -gt 0 ]; then
-        echo -e "System Status: ${YELLOW}DEGRADED${NC}"
+        printf "System Status: ${YELLOW}DEGRADED${NC}\n"
     else
-        echo -e "System Status: ${RED}DOWN${NC}"
+        printf "System Status: ${RED}DOWN${NC}\n"
     fi
     
     echo
@@ -324,7 +326,7 @@ display_status_table() {
 
 # Display quick URLs
 display_quick_access() {
-    echo -e "${BLUE}=== Quick Access URLs ===${NC}"
+    printf "${BLUE}=== Quick Access URLs ===${NC}\n"
     echo "• Dashboard:      http://localhost:3001"
     echo "• Chat Interface: http://localhost:3001/query"
     echo "• API Gateway:    http://localhost:9000"
@@ -336,7 +338,7 @@ display_quick_access() {
 
 # Display system resources
 display_system_resources() {
-    echo -e "${BLUE}=== System Resources ===${NC}"
+    printf "${BLUE}=== System Resources ===${NC}\n"
     
     # Total Kenny memory usage
     local total_memory=0
@@ -371,7 +373,7 @@ watch_mode() {
     while true; do
         clear_screen
         
-        echo -e "${BLUE}"
+        printf "${BLUE}"
         cat << "EOF"
  _  __                         ____  _        _             
 | |/ /__ _ __  _ __  _   _     / ___|| |_ __ _| |_ _   _ ___ 
@@ -380,13 +382,13 @@ watch_mode() {
 |_|\_\___|_| |_|_| |_|\__, |   |____/ \__\__,_|\__|\__,_|___/
                      |___/                                 
 EOF
-        echo -e "${NC}"
+        printf "${NC}\n"
         
         display_status_table true
         display_system_resources
         display_quick_access
         
-        echo -e "${CYAN}Refreshing in 5 seconds... (Ctrl+C to exit)${NC}"
+        printf "${CYAN}Refreshing in 5 seconds... (Ctrl+C to exit)${NC}\n"
         sleep 5
     done
 }
@@ -467,7 +469,7 @@ main() {
     # Single status check
     clear_screen --no-clear
     
-    echo -e "${BLUE}"
+    printf "${BLUE}"
     cat << "EOF"
  _  __                         ____  _        _             
 | |/ /__ _ __  _ __  _   _     / ___|| |_ __ _| |_ _   _ ___ 
@@ -476,7 +478,7 @@ main() {
 |_|\_\___|_| |_|_| |_|\__, |   |____/ \__\__,_|\__|\__,_|___/
                      |___/                                 
 EOF
-    echo -e "${NC}"
+    printf "${NC}\n"
     
     info "Kenny v2.0 Service Status Check"
     echo
@@ -485,7 +487,7 @@ EOF
     display_system_resources
     display_quick_access
     
-    echo -e "${BLUE}Commands:${NC}"
+    printf "${BLUE}Commands:${NC}\n"
     echo "• Full Health Check: ./kenny-health.sh"
     echo "• Start Kenny:       ./kenny-launch.sh"
     echo "• Stop Kenny:        ./kenny-stop.sh"
@@ -494,7 +496,7 @@ EOF
 }
 
 # Handle Ctrl+C gracefully in watch mode
-trap 'echo -e "\n${BLUE}Monitoring stopped. Kenny services continue running.${NC}"; exit 0' SIGINT
+trap 'printf "\n${BLUE}Monitoring stopped. Kenny services continue running.${NC}\n"; exit 0' SIGINT
 
 # Run main function
 main "$@"

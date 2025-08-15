@@ -32,19 +32,19 @@ SERVICES=(
 
 # Utility functions
 log() {
-    echo -e "${GREEN}✓ $1${NC}"
+    printf "${GREEN}✓ $1${NC}\n"
 }
 
 warn() {
-    echo -e "${YELLOW}⚠ $1${NC}"
+    printf "${YELLOW}⚠ $1${NC}\n"
 }
 
 error() {
-    echo -e "${RED}✗ $1${NC}"
+    printf "${RED}✗ $1${NC}\n"
 }
 
 info() {
-    echo -e "${BLUE}ℹ $1${NC}"
+    printf "${BLUE}ℹ $1${NC}\n"
 }
 
 # Stop a service gracefully
@@ -171,7 +171,7 @@ stop_docker_services() {
 
 # Main function
 main() {
-    echo -e "${BLUE}"
+    printf "${BLUE}"
     cat << "EOF"
  _  __                         ____  _               
 | |/ /__ _ __  _ __  _   _     / ___|| |_ ___  _ __   
@@ -180,7 +180,7 @@ main() {
 |_|\_\___|_| |_|_| |_|\__, |   |____/ \__\___/| .__/  
                      |___/                   |_|     
 EOF
-    echo -e "${NC}"
+    printf "${NC}\n"
     
     info "Kenny v2.0 Shutdown Process Starting..."
     
@@ -218,7 +218,7 @@ EOF
     stop_docker_services
     
     # Stop services in reverse order (graceful dependency shutdown)
-    echo -e "\n${BLUE}=== Stopping Services ===${NC}"
+    printf "\n${BLUE}=== Stopping Services ===${NC}\n"
     
     local stopped_count=0
     local failed_count=0
@@ -235,17 +235,17 @@ EOF
     stop_by_ports
     
     # Clean up files
-    echo -e "\n${BLUE}=== Cleanup ===${NC}"
+    printf "\n${BLUE}=== Cleanup ===${NC}\n"
     cleanup_files
     
     # Final verification
-    echo -e "\n${BLUE}=== Verification ===${NC}"
+    printf "\n${BLUE}=== Verification ===${NC}\n"
     local remaining_processes=$(lsof -ti :8001,:8002,:9000,:3001,:5100,:8000,:8003,:8004,:8005,:8006,:8007 2>/dev/null | wc -l | tr -d ' ')
     
     if [ "$remaining_processes" -eq "0" ]; then
         log "All Kenny services have been stopped successfully"
         echo
-        echo -e "${GREEN}🛑 Kenny v2.0 has been shut down cleanly${NC}"
+        printf "${GREEN}🛑 Kenny v2.0 has been shut down cleanly${NC}\n"
         
         if [ $failed_count -gt 0 ]; then
             warn "Note: $failed_count services required force termination"
@@ -258,7 +258,7 @@ EOF
     fi
     
     echo
-    echo -e "${BLUE}Summary:${NC}"
+    printf "${BLUE}Summary:${NC}\n"
     echo "• Services stopped: $stopped_count"
     if [ $failed_count -gt 0 ]; then
         echo "• Services force-stopped: $failed_count"
@@ -266,7 +266,7 @@ EOF
     echo "• Remaining processes: $remaining_processes"
     echo
     
-    echo -e "${BLUE}To restart Kenny:${NC}"
+    printf "${BLUE}To restart Kenny:${NC}\n"
     echo "• Run: ./kenny-launch.sh"
     echo
     
