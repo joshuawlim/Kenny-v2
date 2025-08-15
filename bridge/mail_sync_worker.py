@@ -17,8 +17,49 @@ from mail_live_optimized import fetch_recent_messages, fetch_messages_since_time
 
 logger = logging.getLogger(__name__)
 
+class AdaptiveBatchSyncer:
+    """Adaptive batch processing for problematic mailboxes like Inbox."""
+    
+    def __init__(self, mailbox: str):
+        self.mailbox = mailbox
+        self.batch_size = 10 if mailbox.lower() == "inbox" else 50  # Start small for Inbox
+        self.success_rate = 0.0
+        self.consecutive_failures = 0
+        self.max_batch_size = 200
+        self.min_batch_size = 5
+        self.success_history = []  # Track last 10 attempts
+        
+    def update_success_rate(self, success: bool):
+        """Update success rate based on recent attempts."""
+        self.success_history.append(success)
+        if len(self.success_history) > 10:
+            self.success_history.pop(0)
+        
+        self.success_rate = sum(self.success_history) / len(self.success_history)
+        
+        if success:
+            self.consecutive_failures = 0
+        else:
+            self.consecutive_failures += 1
+    
+    def adapt_batch_size(self):
+        """Adapt batch size based on success rate."""
+        if self.success_rate > 0.8 and self.consecutive_failures == 0:
+            # High success rate: increase batch size
+            self.batch_size = min(int(self.batch_size * 1.2), self.max_batch_size)
+        elif self.success_rate < 0.5 or self.consecutive_failures >= 2:
+            # Low success rate or consecutive failures: decrease batch size
+            self.batch_size = max(int(self.batch_size * 0.6), self.min_batch_size)
+        
+        logger.info(f"Adapted batch size for {self.mailbox}: {self.batch_size} (success rate: {self.success_rate:.2f})")
+    
+    def should_abort(self) -> bool:
+        """Determine if we should abort due to consistent failures."""
+        return self.consecutive_failures >= 5 and self.success_rate < 0.2
+
+
 class MailSyncWorker:
-    """Background worker for incremental mail synchronization."""
+    """Background worker for incremental mail synchronization with adaptive batch processing."""
     
     def __init__(self, 
                  sync_interval_minutes: int = 5,
@@ -40,6 +81,12 @@ class MailSyncWorker:
         self.is_running = False
         self.sync_thread = None
         self.mailboxes_to_sync = ["Inbox", "Sent"]
+        
+        # Adaptive batch processing
+        self.adaptive_syncers = {
+            mailbox: AdaptiveBatchSyncer(mailbox) 
+            for mailbox in self.mailboxes_to_sync
+        }
         
         # Sync statistics
         self.last_sync_time = None
@@ -127,53 +174,124 @@ class MailSyncWorker:
             logger.error(f"Sync failed: {e}")
     
     def _sync_mailbox(self, mailbox: str, is_initial: bool) -> int:
-        """Sync a specific mailbox incrementally."""
+        """Sync a specific mailbox with adaptive batch processing."""
+        adaptive_syncer = self.adaptive_syncers[mailbox]
+        total_messages_synced = 0
+        
+        # Check if we should abort due to consistent failures
+        if adaptive_syncer.should_abort():
+            logger.warning(f"Aborting sync for {mailbox} due to consistent failures")
+            self.cache.update_sync_status(mailbox, success=False, message_count=0)
+            return 0
+        
         try:
             if is_initial:
-                # Initial sync: fetch recent messages
+                # Initial sync with adaptive batching
                 since_date = datetime.now(timezone.utc) - timedelta(days=self.initial_sync_days)
-                messages = fetch_recent_messages(
-                    mailbox=mailbox,
-                    limit=self.max_messages_per_sync,
-                    since_date=since_date,
-                    timeout_seconds=30  # Longer timeout for initial sync
-                )
-                logger.info(f"Initial sync for {mailbox}: fetching messages since {since_date.isoformat()}")
+                total_messages_synced = self._adaptive_initial_sync(mailbox, since_date, adaptive_syncer)
             else:
-                # Incremental sync: fetch only new messages
+                # Incremental sync
                 last_sync = self.cache.get_last_sync_time(mailbox)
                 if last_sync:
                     messages = fetch_messages_since_timestamp(
                         mailbox=mailbox,
                         since_timestamp=last_sync.isoformat(),
-                        limit=self.max_messages_per_sync
+                        limit=adaptive_syncer.batch_size
                     )
-                    logger.debug(f"Incremental sync for {mailbox}: fetching messages since {last_sync.isoformat()}")
+                    if messages:
+                        self.cache.cache_messages(messages, mailbox)
+                    total_messages_synced = len(messages) if messages else 0
+                    adaptive_syncer.update_success_rate(True)
+                    logger.debug(f"Incremental sync for {mailbox}: {total_messages_synced} new messages")
                 else:
-                    # No previous sync, treat as initial
+                    # No previous sync, treat as initial with smaller scope
                     since_date = datetime.now(timezone.utc) - timedelta(days=1)
-                    messages = fetch_recent_messages(
-                        mailbox=mailbox,
-                        limit=self.max_messages_per_sync,
-                        since_date=since_date,
-                        timeout_seconds=20
-                    )
-                    logger.info(f"No previous sync for {mailbox}, fetching last 24 hours")
+                    total_messages_synced = self._adaptive_initial_sync(mailbox, since_date, adaptive_syncer)
             
-            # Cache the messages
-            if messages:
-                self.cache.cache_messages(messages, mailbox)
-                self.cache.update_sync_status(mailbox, success=True, message_count=len(messages))
-            else:
-                # Still update sync status even if no new messages
-                self.cache.update_sync_status(mailbox, success=True, message_count=0)
+            # Cache the messages if successful
+            if total_messages_synced >= 0:  # Even 0 is success
+                self.cache.update_sync_status(mailbox, success=True, message_count=total_messages_synced)
+                adaptive_syncer.adapt_batch_size()
             
-            return len(messages)
+            return total_messages_synced
             
         except Exception as e:
-            # Update sync status to indicate failure
+            # Update sync status and adaptive syncer on failure
+            adaptive_syncer.update_success_rate(False)
+            adaptive_syncer.adapt_batch_size()
             self.cache.update_sync_status(mailbox, success=False, message_count=0)
+            logger.error(f"Sync failed for {mailbox}: {e}")
             raise e
+    
+    def _adaptive_initial_sync(self, mailbox: str, since_date: datetime, adaptive_syncer: AdaptiveBatchSyncer) -> int:
+        """Perform adaptive initial sync with progressive batch processing."""
+        total_messages = 0
+        max_attempts = 10  # Prevent infinite loops
+        attempt = 0
+        
+        logger.info(f"Starting adaptive initial sync for {mailbox} with batch size {adaptive_syncer.batch_size}")
+        
+        while attempt < max_attempts and not adaptive_syncer.should_abort():
+            attempt += 1
+            
+            try:
+                # Calculate timeout based on batch size (2-3 seconds per message expected)
+                timeout_seconds = min(max(adaptive_syncer.batch_size * 2, 10), 45)
+                
+                messages = fetch_recent_messages(
+                    mailbox=mailbox,
+                    limit=adaptive_syncer.batch_size,
+                    since_date=since_date,
+                    timeout_seconds=timeout_seconds
+                )
+                
+                if messages:
+                    # Cache successful batch
+                    self.cache.cache_messages(messages, mailbox)
+                    batch_count = len(messages)
+                    total_messages += batch_count
+                    adaptive_syncer.update_success_rate(True)
+                    
+                    logger.info(f"Adaptive sync batch {attempt} for {mailbox}: {batch_count} messages (total: {total_messages})")
+                    
+                    # If we got fewer messages than batch size, we're likely done
+                    if batch_count < adaptive_syncer.batch_size:
+                        logger.info(f"Completed adaptive sync for {mailbox}: fetched {total_messages} messages in {attempt} batches")
+                        break
+                        
+                    # Adjust since_date for next batch to avoid overlap
+                    if messages:
+                        # Get timestamp of oldest message in this batch
+                        oldest_msg_ts = min(msg.get('ts', '') for msg in messages if msg.get('ts'))
+                        if oldest_msg_ts:
+                            try:
+                                since_date = datetime.fromisoformat(oldest_msg_ts.replace('Z', '+00:00')) - timedelta(minutes=1)
+                            except ValueError:
+                                # If parsing fails, use current batch completion time
+                                since_date = datetime.now(timezone.utc) - timedelta(hours=1)
+                    
+                else:
+                    # No messages found - might be end of data
+                    adaptive_syncer.update_success_rate(True)
+                    logger.info(f"No more messages found for {mailbox} after {total_messages} messages")
+                    break
+                    
+            except Exception as e:
+                logger.warning(f"Adaptive sync batch {attempt} failed for {mailbox}: {e}")
+                adaptive_syncer.update_success_rate(False)
+                
+                # If consecutive failures, break early
+                if adaptive_syncer.consecutive_failures >= 3:
+                    logger.warning(f"Too many consecutive failures for {mailbox}, stopping adaptive sync")
+                    break
+            
+            # Adapt batch size after each attempt
+            adaptive_syncer.adapt_batch_size()
+            
+            # Small delay between batches to avoid overwhelming the system
+            time.sleep(1)
+        
+        return total_messages
     
     def force_sync_now(self, mailbox: Optional[str] = None) -> Dict[str, Any]:
         """Force an immediate sync of specified mailbox or all mailboxes."""
@@ -201,8 +319,18 @@ class MailSyncWorker:
             }
     
     def get_sync_status(self) -> Dict[str, Any]:
-        """Get current sync worker status and statistics."""
+        """Get current sync worker status and statistics including adaptive batch info."""
         cache_stats = self.cache.get_cache_stats()
+        
+        # Get adaptive syncer statistics
+        adaptive_stats = {}
+        for mailbox, syncer in self.adaptive_syncers.items():
+            adaptive_stats[mailbox] = {
+                "batch_size": syncer.batch_size,
+                "success_rate": syncer.success_rate,
+                "consecutive_failures": syncer.consecutive_failures,
+                "should_abort": syncer.should_abort()
+            }
         
         return {
             "worker_status": {
@@ -212,6 +340,7 @@ class MailSyncWorker:
                 "mailboxes": self.mailboxes_to_sync
             },
             "sync_statistics": self.sync_stats,
+            "adaptive_batch_status": adaptive_stats,
             "cache_statistics": cache_stats
         }
 

@@ -566,8 +566,102 @@ services/agent-sdk/
 
 ---
 
-## Phase 3: Communication & Integration Agents *(NEXT PRIORITY - Week 7)*
-**Status**: 🔄 **READY TO BEGIN** - Coordinator implementation complete
+## Phase 2.1: Advanced Agent Reliability & Performance Patterns *(CURRENT PRIORITY - Week 7)*
+**Status**: 🔄 **IN PROGRESS** - Phase 2 coordinator complete, implementing reliability patterns
+**Prerequisites**: ✅ Phase 2 coordinator operational with live agent communication
+**Objective**: Implement advanced patterns for robust agent responses and performance optimization
+
+### 2.1.1 Adaptive Batch Processing for Mail Inbox ⏳ **IN PROGRESS**
+**Objective**: Solve Inbox timeout issue with intelligent batch sizing
+
+**Current Problem**: Inbox queries still timeout due to large message volume (21,979+ messages)
+**Solution**: Implement adaptive batch processing that adjusts based on success rates
+
+**Components**:
+- ⏳ AdaptiveInboxSyncer with dynamic batch sizing (start: 10 messages)
+- ⏳ Success rate monitoring and batch size adjustment
+- ⏳ Progressive timeout handling (5s → 15s → 30s)
+- ⏳ Early termination on consistent failures
+
+**Success Measures**:
+- [ ] Inbox sync completes successfully with adaptive batching
+- [ ] Batch size optimizes based on performance (10 → 50+ messages)
+- [ ] Timeout failures trigger batch size reduction
+- [ ] At least 100 recent inbox messages cached within 60 seconds
+- [ ] Cache responses remain sub-second (<0.1s)
+
+**Implementation**: 
+- Enhance `mail_sync_worker.py` with adaptive algorithm
+- Test with live Inbox data and measure success rates
+- **Note**: 2 additional patterns to be implemented after this one
+
+### 2.1.2 Progressive Response Pattern for Coordinator ⏳ **PENDING**
+**Objective**: Replace all-or-nothing responses with streaming progressive results
+
+**Current Problem**: Coordinator waits for all agents before responding
+**Solution**: Stream results as agents complete, providing immediate user feedback
+
+**Components**:
+- ⏳ Progressive response collection in coordinator
+- ⏳ Server-sent events (SSE) for real-time updates
+- ⏳ Partial result aggregation and completion tracking
+- ⏳ Graceful handling of slow/failed agents
+
+**Success Measures**:
+- [ ] First agent response streams within 1 second
+- [ ] User sees progress updates as agents complete
+- [ ] System remains responsive even with slow agents
+- [ ] Complete results aggregate properly
+- [ ] Failed agents don't block successful ones
+
+**Implementation**:
+- Enhance coordinator with async result streaming
+- Add SSE endpoints for real-time updates
+- Test with mixed fast/slow agent scenarios
+- **Note**: 1 additional pattern to be implemented after this one
+
+### 2.1.3 Enhanced Health Monitoring with Metrics ⏳ **PENDING**
+**Objective**: Implement comprehensive agent health tracking with performance metrics
+
+**Current Problem**: Basic health checks without performance insight
+**Solution**: Rich health monitoring with response times, success rates, and predictive alerts
+
+**Components**:
+- ⏳ AgentHealthMonitor with performance tracking
+- ⏳ Success rate calculation and trending
+- ⏳ Response time histograms and SLA monitoring
+- ⏳ Predictive degradation detection
+
+**Success Measures**:
+- [ ] Health checks include performance metrics
+- [ ] Success rates tracked over time with trends
+- [ ] Response time SLAs monitored and reported
+- [ ] Degradation alerts trigger before complete failures
+- [ ] Health dashboard shows actionable insights
+
+**Implementation**:
+- Enhance existing health endpoints with metrics
+- Add performance tracking to agent SDK
+- Create health aggregation and trending
+- **Note**: Final pattern in Phase 2.1 sequence
+
+### Phase 2.1 Architecture Benefits:
+- **Robustness**: Agents provide guaranteed responses through fallback mechanisms
+- **Performance**: Adaptive algorithms optimize based on real conditions
+- **User Experience**: Progressive responses prevent perceived system hangs
+- **Observability**: Rich metrics enable proactive issue detection
+- **Scalability**: Patterns support growing agent ecosystem
+
+### Phase 2.1 Implementation Approach:
+1. **Sequential Implementation**: One pattern at a time with testing
+2. **Live Validation**: Test each pattern with real agent traffic
+3. **Performance Benchmarking**: Measure improvements against current baseline
+4. **Graceful Enhancement**: Maintain backward compatibility during implementation
+
+---
+
+## Phase 3: Communication & Integration Agents *(NEXT PRIORITY - Week 8)*
+**Status**: 🔄 **READY TO BEGIN** - Phase 2.1 patterns implementation in progress
 
 ### 3.1 WhatsApp Agent
 **Objective**: Create agent for WhatsApp integration with read-only capabilities
