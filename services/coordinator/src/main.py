@@ -6,9 +6,18 @@ from typing import Dict, Any, AsyncGenerator
 import asyncio
 import logging
 import json
+import httpx
 
 from .coordinator import Coordinator
 from .policy.engine import PolicyEngine
+
+# Try to import tracing from agent SDK
+try:
+    from kenny_agent import init_tracing, TracingMiddleware, AsyncSpanContext, SpanType
+    TRACING_AVAILABLE = True
+except ImportError:
+    TRACING_AVAILABLE = False
+    logger.warning("Tracing not available - install agent SDK for full observability")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -19,6 +28,28 @@ app = FastAPI(
     description="Multi-agent orchestration service with LangGraph",
     version="0.2.0"
 )
+
+# Initialize tracing if available
+tracer = None
+if TRACING_AVAILABLE:
+    tracer = init_tracing("coordinator")
+    
+    # Add tracing middleware
+    app.add_middleware(TracingMiddleware, tracer=tracer)
+    
+    # Add span exporter to send traces to registry
+    async def send_trace_to_registry(span):
+        try:
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                await client.post(
+                    "http://localhost:8001/traces/collect",
+                    json=span.to_dict(),
+                    headers={"Content-Type": "application/json"}
+                )
+        except Exception as e:
+            logger.debug(f"Failed to send trace to registry: {e}")
+    
+    tracer.add_span_exporter(send_trace_to_registry)
 
 # Add CORS middleware
 app.add_middleware(
@@ -92,30 +123,68 @@ async def get_all_capabilities() -> Dict[str, Any]:
 @app.post("/coordinator/process")
 async def process_request(request: Dict[str, Any]) -> Dict[str, Any]:
     """Process a user request through the coordinator"""
-    try:
-        user_input = request.get("user_input", "")
-        context = request.get("context", {})
-        
-        if not user_input:
-            raise HTTPException(status_code=400, detail="user_input is required")
-        
-        # Process through coordinator
-        result_state = await coordinator.process_request(user_input, context)
-        
-        return {
-            "status": "success",
-            "input": user_input,
-            "result": {
-                "intent": result_state["context"].get("intent"),
-                "plan": result_state["context"].get("plan"),
-                "execution_path": result_state["execution_path"],
-                "results": result_state["results"],
-                "errors": result_state["errors"]
+    if TRACING_AVAILABLE and tracer:
+        async with AsyncSpanContext(tracer, "coordinator.process_request", SpanType.COORDINATOR_NODE) as span:
+            try:
+                user_input = request.get("user_input", "")
+                context = request.get("context", {})
+                
+                span.set_attribute("request.user_input", user_input[:100])  # Truncate for privacy
+                span.set_attribute("request.context_keys", list(context.keys()))
+                
+                if not user_input:
+                    raise HTTPException(status_code=400, detail="user_input is required")
+                
+                # Process through coordinator
+                result_state = await coordinator.process_request(user_input, context)
+                
+                # Add result attributes to span
+                span.set_attribute("response.intent", result_state["context"].get("intent"))
+                span.set_attribute("response.agent_count", len(result_state["results"]))
+                span.set_attribute("response.error_count", len(result_state["errors"]))
+                span.set_attribute("response.execution_path", result_state["execution_path"])
+                
+                return {
+                    "status": "success",
+                    "input": user_input,
+                    "result": {
+                        "intent": result_state["context"].get("intent"),
+                        "plan": result_state["context"].get("plan"),
+                        "execution_path": result_state["execution_path"],
+                        "results": result_state["results"],
+                        "errors": result_state["errors"]
+                    }
+                }
+            except Exception as e:
+                span.set_error(e)
+                logger.error(f"Error processing request: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
+    else:
+        # Fallback without tracing
+        try:
+            user_input = request.get("user_input", "")
+            context = request.get("context", {})
+            
+            if not user_input:
+                raise HTTPException(status_code=400, detail="user_input is required")
+            
+            # Process through coordinator
+            result_state = await coordinator.process_request(user_input, context)
+            
+            return {
+                "status": "success",
+                "input": user_input,
+                "result": {
+                    "intent": result_state["context"].get("intent"),
+                    "plan": result_state["context"].get("plan"),
+                    "execution_path": result_state["execution_path"],
+                    "results": result_state["results"],
+                    "errors": result_state["errors"]
+                }
             }
-        }
-    except Exception as e:
-        logger.error(f"Error processing request: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        except Exception as e:
+            logger.error(f"Error processing request: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/coordinator/process-stream")
 async def process_request_stream(request: Dict[str, Any]) -> StreamingResponse:
