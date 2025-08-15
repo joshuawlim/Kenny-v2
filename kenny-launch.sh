@@ -308,6 +308,20 @@ info "Agents starting up... (this takes a moment)"
 # Phase 7: Start Dashboard
 printf "\n${BLUE}=== Phase 7: Starting Dashboard ===${NC}\n"
 
+# Check if dashboard build is needed
+if [ -d "$KENNY_ROOT/services/dashboard" ]; then
+    cd "$KENNY_ROOT/services/dashboard"
+    
+    # Check if TypeScript files exist and need compilation
+    if [ ! -d "dist" ] && [ -f "tsconfig.json" ]; then
+        info "Building dashboard for first run..."
+        npm run build >> "$LOG_DIR/dashboard-build.log" 2>&1
+        log "Dashboard build complete"
+    fi
+    
+    cd "$KENNY_ROOT"
+fi
+
 start_service "dashboard" \
     "npm run dev" \
     "$KENNY_ROOT/services/dashboard"
@@ -337,9 +351,9 @@ printf "\n${GREEN}🎉 Kenny v2.0 is now running!${NC}\n"
 echo
 printf "${BLUE}Access Kenny:${NC}\n"
 echo "• Dashboard: http://localhost:$DASHBOARD_PORT"
-echo "• Chat Interface: http://localhost:$DASHBOARD_PORT/query"
+echo "• Chat Interface: http://localhost:$DASHBOARD_PORT/chat"
 echo "• API Gateway: http://localhost:$GATEWAY_PORT"
-echo "• System Health: http://localhost:$AGENT_REGISTRY_PORT/security/ui"
+echo "• System Health: http://localhost:$AGENT_REGISTRY_PORT/system/health/dashboard"
 echo
 printf "${BLUE}Quick Commands:${NC}\n"
 echo "• Health Check: ./kenny-health.sh"

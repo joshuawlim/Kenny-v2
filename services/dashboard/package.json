@@ -5,17 +5,19 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:all": "npm run dev:backend & npm run dev",
+    "dev:backend": "cd ../.. && ./kenny-launch.sh",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest",
     "test:ui": "vitest --ui",
+    "test:e2e": "jest --config jest.e2e.config.js",
+    "test:all": "npm run type-check && npm run lint && npm run test",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "type-check": "tsc --noEmit",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
-    "test:e2e": "jest --config jest.e2e.config.js",
-    "test:e2e:dev": "NODE_ENV=development jest --config jest.e2e.config.js --watch",
-    "test:e2e:ci": "NODE_ENV=production jest --config jest.e2e.config.js --ci"
+    "start": "npm run dev:all"
   },
   "dependencies": {
     "@emotion/react": "^11.11.1",
