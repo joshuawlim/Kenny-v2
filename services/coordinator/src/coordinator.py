@@ -3,6 +3,13 @@ from langgraph.graph import StateGraph, END
 import asyncio
 import logging
 
+from .nodes.router import RouterNode
+from .nodes.planner import PlannerNode  
+from .nodes.executor import ExecutorNode
+from .nodes.reviewer import ReviewerNode
+from .agents.agent_client import AgentClient
+from .policy.engine import PolicyEngine
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -20,9 +27,21 @@ class CoordinatorState(TypedDict):
 class Coordinator:
     """Main coordinator class for multi-agent orchestration"""
     
-    def __init__(self):
+    def __init__(self, registry_url: str = "http://localhost:8001"):
         self.graph = None
-        self.nodes = {}
+        self.registry_url = registry_url
+        self.agent_client = AgentClient(registry_url)
+        self.policy_engine = PolicyEngine()
+        
+        # Initialize enhanced nodes
+        self.router_node = RouterNode()
+        self.planner_node = PlannerNode()
+        self.executor_node = ExecutorNode()
+        self.reviewer_node = ReviewerNode(self.policy_engine)
+        
+        # Load default policies
+        self.policy_engine.load_default_rules()
+        
         self._build_graph()
     
     def _build_graph(self):
@@ -49,68 +68,21 @@ class Coordinator:
         self.graph = workflow.compile()
         logger.info("Coordinator graph built successfully")
     
-    def _router_node(self, state: CoordinatorState) -> CoordinatorState:
-        """Route user input to appropriate processing path"""
-        logger.info(f"Routing input: {state['user_input']}")
-        state['current_node'] = "router"
-        state['execution_path'].append("router")
-        
-        # Basic routing logic (will be enhanced)
-        user_input_lower = state['user_input'].lower()
-        if any(word in user_input_lower for word in ["mail", "email", "message"]):
-            state['context']['intent'] = "mail_operation"
-        elif any(word in user_input_lower for word in ["calendar", "schedule", "meeting", "event", "appointment"]):
-            state['context']['intent'] = "calendar_operation"
-        else:
-            state['context']['intent'] = "general_query"
-        
-        return state
+    async def _router_node(self, state: CoordinatorState) -> CoordinatorState:
+        """Route user input with intelligent intent classification"""
+        return await self.router_node.route_request(state, self.agent_client)
     
-    def _planner_node(self, state: CoordinatorState) -> CoordinatorState:
-        """Plan the execution steps"""
-        logger.info(f"Planning for intent: {state['context'].get('intent')}")
-        state['current_node'] = "planner"
-        state['execution_path'].append("planner")
-        
-        # Basic planning logic (will be enhanced)
-        intent = state['context'].get("intent")
-        if intent == "mail_operation":
-            state['context']['plan'] = ["search_mail", "process_results"]
-        elif intent == "calendar_operation":
-            state['context']['plan'] = ["check_calendar", "propose_event"]
-        else:
-            state['context']['plan'] = ["general_processing"]
-        
-        return state
+    async def _planner_node(self, state: CoordinatorState) -> CoordinatorState:
+        """Plan execution steps based on routing results"""
+        return await self.planner_node.plan_execution(state)
     
-    def _executor_node(self, state: CoordinatorState) -> CoordinatorState:
-        """Execute the planned actions"""
-        logger.info(f"Executing plan: {state['context'].get('plan')}")
-        state['current_node'] = "executor"
-        state['execution_path'].append("executor")
-        
-        # Basic execution logic (will be enhanced)
-        plan = state['context'].get("plan", [])
-        for step in plan:
-            logger.info(f"Executing step: {step}")
-            # Placeholder for actual execution
-            state['results'][step] = f"Completed {step}"
-        
-        return state
+    async def _executor_node(self, state: CoordinatorState) -> CoordinatorState:
+        """Execute planned actions on live agents"""
+        return await self.executor_node.execute_plan(state)
     
-    def _reviewer_node(self, state: CoordinatorState) -> CoordinatorState:
-        """Review and finalize results"""
-        logger.info("Reviewing execution results")
-        state['current_node'] = "reviewer"
-        state['execution_path'].append("reviewer")
-        
-        # Basic review logic (will be enhanced)
-        if state['errors']:
-            logger.warning(f"Execution completed with errors: {state['errors']}")
-        else:
-            logger.info("Execution completed successfully")
-        
-        return state
+    async def _reviewer_node(self, state: CoordinatorState) -> CoordinatorState:
+        """Review and finalize execution results with policy checks"""
+        return await self.reviewer_node.review_execution(state)
     
     async def process_request(self, user_input: str, context: Optional[Dict[str, Any]] = None) -> CoordinatorState:
         """Process a user request through the coordinator"""
@@ -144,7 +116,18 @@ class Coordinator:
         
         return {
             "status": "built",
-            "nodes": list(self.nodes.keys()) if self.nodes else [],
+            "nodes": ["router", "planner", "executor", "reviewer"],
             "entry_point": "router",
-            "end_point": "END"
+            "end_point": "END",
+            "registry_url": self.registry_url,
+            "policy_rules_count": len(self.policy_engine.get_rules())
         }
+    
+    async def cleanup(self):
+        """Cleanup coordinator resources"""
+        try:
+            await self.agent_client.close()
+            await self.executor_node.cleanup()
+            logger.info("Coordinator cleanup completed")
+        except Exception as e:
+            logger.error(f"Error during cleanup: {e}")

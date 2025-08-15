@@ -18,7 +18,7 @@ class AgentMessage:
 class AgentClient:
     """Client for communicating with agents via the agent registry"""
     
-    def __init__(self, registry_url: str = "http://localhost:8000"):
+    def __init__(self, registry_url: str = "http://localhost:8001"):
         self.registry_url = registry_url
         self.client = httpx.AsyncClient(timeout=30.0)
         self.agent_id = "coordinator"

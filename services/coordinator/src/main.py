@@ -51,6 +51,42 @@ async def get_graph_info() -> Dict[str, Any]:
     """Get coordinator graph information"""
     return coordinator.get_graph_info()
 
+@app.get("/agents")
+async def get_available_agents() -> Dict[str, Any]:
+    """Get available agents from registry"""
+    try:
+        agents = await coordinator.agent_client.get_available_agents()
+        return {
+            "status": "success",
+            "agents": agents,
+            "count": len(agents)
+        }
+    except Exception as e:
+        logger.error(f"Error getting agents: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/capabilities")
+async def get_all_capabilities() -> Dict[str, Any]:
+    """Get all available capabilities from all agents"""
+    try:
+        agents = await coordinator.agent_client.get_available_agents()
+        all_capabilities = []
+        
+        for agent in agents:
+            agent_id = agent.get("agent_id")
+            if agent_id:
+                capabilities = await coordinator.agent_client.get_agent_capabilities(agent_id)
+                all_capabilities.extend(capabilities)
+        
+        return {
+            "status": "success", 
+            "capabilities": all_capabilities,
+            "count": len(all_capabilities)
+        }
+    except Exception as e:
+        logger.error(f"Error getting capabilities: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/coordinator/process")
 async def process_request(request: Dict[str, Any]) -> Dict[str, Any]:
     """Process a user request through the coordinator"""
