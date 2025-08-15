@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Set, Any
 import httpx
-from schemas import (
+from .schemas import (
     AgentManifest, AgentRegistration, AgentStatus, 
     CapabilityInfo, HealthCheckResponse
 )

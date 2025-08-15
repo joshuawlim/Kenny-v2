@@ -12,8 +12,8 @@ import uvicorn
 import json
 import os
 
-from registry import AgentRegistry
-from schemas import (
+from .registry import AgentRegistry
+from .schemas import (
     AgentRegistration, AgentStatus, CapabilityInfo, 
     HealthCheckResponse, AgentManifest
 )
