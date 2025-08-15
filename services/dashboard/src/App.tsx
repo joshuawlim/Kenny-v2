@@ -1,6 +1,7 @@
 // Minimal App component for testing
 import React from 'react';
 import { Routes, Route, useNavigate, useLocation, Outlet } from 'react-router-dom';
+import { ChatInterface } from './ChatInterface';
 
 // Simple components without complex dependencies
 const SimpleAppShell = () => {
@@ -324,7 +325,7 @@ function App() {
       <Routes>
         <Route path="/" element={<SimpleAppShell />}>
           <Route index element={<SimpleDashboard />} />
-          <Route path="chat" element={<SimpleChat />} />
+          <Route path="chat" element={<ChatInterface />} />
           <Route path="agents" element={<SimpleAgents />} />
           <Route path="health" element={<SimpleHealth />} />
           <Route path="security" element={<SimpleSecurity />} />

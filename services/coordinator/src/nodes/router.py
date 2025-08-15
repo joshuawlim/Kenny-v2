@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 class IntentClassifier:
     """LLM-based intent classification for user requests"""
     
-    def __init__(self, model_name: str = "llama3.2:3b"):
+    def __init__(self, model_name: str = "qwen3:8b"):
         try:
             self.llm = ChatOllama(
                 model=model_name,
