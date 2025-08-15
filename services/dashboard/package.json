@@ -20,7 +20,12 @@
     "recharts": "^2.8.0",
     "lucide-react": "^0.284.0",
     "clsx": "^2.0.0",
-    "date-fns": "^2.30.0"
+    "date-fns": "^2.30.0",
+    "@mui/material": "^5.14.15",
+    "@mui/icons-material": "^5.14.15",
+    "@emotion/react": "^11.11.1",
+    "@emotion/styled": "^11.11.0",
+    "@react-spring/web": "^9.7.3"
   },
   "devDependencies": {
     "@types/react": "^18.2.22",
