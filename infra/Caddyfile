@@ -1,6 +1,11 @@
 :80 {
   encode zstd gzip
   
+  # Gateway Service (new unified API)
+  handle /gateway/* {
+    reverse_proxy gateway:9000
+  }
+  
   # Agent Registry Service
   handle /registry/* {
     reverse_proxy agent-registry:8000
