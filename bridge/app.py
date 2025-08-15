@@ -13,11 +13,13 @@ app = FastAPI(title="Kenny Bridge", version="0.2.0")
 BRIDGE_MODE = os.getenv("MAIL_BRIDGE_MODE", "demo").strip().lower()
 CONTACTS_BRIDGE_MODE = os.getenv("CONTACTS_BRIDGE_MODE", "demo").strip().lower()
 IMESSAGE_BRIDGE_MODE = os.getenv("IMESSAGE_BRIDGE_MODE", "demo").strip().lower()
+CALENDAR_BRIDGE_MODE = os.getenv("CALENDAR_BRIDGE_MODE", "demo").strip().lower()
 
-# Simple in-memory cache for live mail, contacts, and imessage data
+# Simple in-memory cache for live mail, contacts, imessage, and calendar data
 _mail_cache = {}
 _contacts_cache = {}
 _imessage_cache = {}
+_calendar_cache = {}
 _cache_lock = threading.Lock()
 CACHE_TTL_SECONDS = 120  # Cache for 2 minutes given slow JXA execution
 
@@ -59,6 +61,18 @@ class iMessageMessage(BaseModel):
     contact_name: Optional[str] = None
     phone_number: Optional[str] = None
     attachments: List[dict] = []
+
+
+class CalendarEvent(BaseModel):
+    id: str
+    title: str
+    start: str
+    end: str
+    all_day: bool = False
+    calendar: str
+    location: Optional[str] = None
+    description: Optional[str] = None
+    attendees: List[str] = []
 
 
 @app.get("/health")
@@ -124,6 +138,25 @@ def _cache_imessages(cache_key: str, data: List) -> None:
     """Cache iMessage data with timestamp."""
     with _cache_lock:
         _imessage_cache[cache_key] = (data, time.time())
+
+
+def _get_cached_calendar(cache_key: str) -> Optional[List]:
+    """Get cached calendar data if still valid."""
+    with _cache_lock:
+        if cache_key in _calendar_cache:
+            data, timestamp = _calendar_cache[cache_key]
+            if time.time() - timestamp < CACHE_TTL_SECONDS:
+                return data
+            else:
+                # Remove expired cache
+                del _calendar_cache[cache_key]
+    return None
+
+
+def _cache_calendar(cache_key: str, data: List) -> None:
+    """Cache calendar data with timestamp."""
+    with _cache_lock:
+        _calendar_cache[cache_key] = (data, time.time())
 
 async def _fetch_live_mail_async(mailbox: str, since: Optional[str], limit: int, page: int) -> List:
     """Fetch live mail data in a thread to avoid blocking."""
@@ -212,6 +245,48 @@ async def _fetch_live_imessages_async(operation: str, **kwargs) -> List:
         )
     except asyncio.TimeoutError:
         print(f"[bridge] JXA iMessage {operation} timed out after 60s")
+        return []
+
+
+async def _fetch_live_calendar_async(operation: str, **kwargs) -> List:
+    """Fetch live calendar data in a thread to avoid blocking."""
+    def _fetch_sync():
+        try:
+            from calendar_live import list_calendars, list_events, get_event_by_id, create_event
+            
+            if operation == "list_calendars":
+                result = list_calendars()
+            elif operation == "list_events":
+                result = list_events(
+                    calendar_name=kwargs.get("calendar_name"),
+                    start_date=kwargs.get("start_date"),
+                    end_date=kwargs.get("end_date"),
+                    limit=kwargs.get("limit", 100)
+                )
+            elif operation == "get_event":
+                result = get_event_by_id(kwargs.get("event_id"))
+                return [result] if result else []
+            elif operation == "create_event":
+                result = create_event(kwargs.get("event_data", {}))
+                return [result] if result else []
+            else:
+                result = []
+            
+            print(f"[bridge] JXA Calendar {operation} completed, got {len(result) if isinstance(result, list) else 1 if result else 0} items")
+            return result
+        except Exception as e:
+            print(f"[bridge] live Calendar {operation} error: {e}")
+            return []
+    
+    # Run the blocking JXA call in a thread with timeout
+    loop = asyncio.get_event_loop()
+    try:
+        return await asyncio.wait_for(
+            loop.run_in_executor(None, _fetch_sync),
+            timeout=60.0  # 60 second timeout for JXA execution
+        )
+    except asyncio.TimeoutError:
+        print(f"[bridge] JXA Calendar {operation} timed out after 60s")
         return []
 
 @app.get("/v1/mail/messages")
@@ -568,6 +643,214 @@ async def get_imessage_thread(thread_id: str):
             "message_count": len(messages),
             "last_message": messages[0]["timestamp"] if messages else None
         }
+    }
+
+
+@app.get("/v1/calendar/calendars")
+async def get_calendars():
+    """Get list of all calendars from Calendar.app or return demo data."""
+    # Live mode: fetch from macOS Calendar via JXA with caching
+    if CALENDAR_BRIDGE_MODE == "live":
+        cache_key = "calendars:all"
+        
+        # Try cache first
+        cached_data = _get_cached_calendar(cache_key)
+        if cached_data is not None:
+            print(f"[bridge] returning cached calendar data for {cache_key}")
+            return cached_data
+        
+        # Fetch live data asynchronously
+        try:
+            live_data = await _fetch_live_calendar_async("list_calendars")
+            # Cache the result
+            _cache_calendar(cache_key, live_data)
+            print(f"[bridge] fetched and cached live calendar data for {cache_key}")
+            return live_data
+        except Exception as live_err:
+            # Fall back to demo data on error
+            print(f"[bridge] live calendar fetch failed, falling back to demo: {live_err}")
+    
+    # Demo mode: return demo calendars
+    return [
+        {
+            "id": "calendar-1",
+            "name": "Calendar",
+            "description": "Default calendar",
+            "color": "blue",
+            "writable": True,
+            "visible": True
+        },
+        {
+            "id": "calendar-2", 
+            "name": "Work",
+            "description": "Work-related events",
+            "color": "red",
+            "writable": True,
+            "visible": True
+        },
+        {
+            "id": "calendar-3",
+            "name": "Personal",
+            "description": "Personal events",
+            "color": "green", 
+            "writable": True,
+            "visible": True
+        }
+    ]
+
+
+@app.get("/v1/calendar/events")
+async def get_calendar_events(
+    calendar: Optional[str] = Query(None, description="Calendar name to filter"),
+    start: Optional[str] = Query(None, description="Start date filter (ISO format)"),
+    end: Optional[str] = Query(None, description="End date filter (ISO format)"),
+    limit: int = Query(100, ge=1, le=500, description="Maximum number of events to return")
+):
+    """Get events from Calendar.app or return demo data."""
+    # Live mode: fetch from macOS Calendar via JXA with caching
+    if CALENDAR_BRIDGE_MODE == "live":
+        cache_key = f"events:{calendar or 'all'}:{start or 'none'}:{end or 'none'}:{limit}"
+        
+        # Try cache first
+        cached_data = _get_cached_calendar(cache_key)
+        if cached_data is not None:
+            print(f"[bridge] returning cached calendar events for {cache_key}")
+            return cached_data
+        
+        # Fetch live data asynchronously
+        try:
+            live_data = await _fetch_live_calendar_async(
+                "list_events", 
+                calendar_name=calendar, 
+                start_date=start, 
+                end_date=end, 
+                limit=limit
+            )
+            # Cache the result
+            _cache_calendar(cache_key, live_data)
+            print(f"[bridge] fetched and cached live calendar events for {cache_key}")
+            return live_data
+        except Exception as live_err:
+            # Fall back to demo data on error
+            print(f"[bridge] live calendar events fetch failed, falling back to demo: {live_err}")
+    
+    # Demo mode: generate demo events
+    from datetime import datetime, timezone, timedelta
+    base_ts = datetime.now(timezone.utc)
+    
+    # Parse start date if provided
+    start_dt = base_ts
+    if start:
+        try:
+            start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+        except:
+            pass
+    
+    events = []
+    for i in range(min(limit, 10)):  # Cap at 10 demo events
+        event_start = start_dt + timedelta(days=i, hours=i % 24)
+        event_end = event_start + timedelta(hours=1)
+        
+        # Every 3rd event is all-day
+        is_all_day = i % 3 == 0
+        if is_all_day:
+            event_start = event_start.replace(hour=0, minute=0, second=0, microsecond=0)
+            event_end = event_start + timedelta(days=1)
+        
+        events.append({
+            "id": f"event-{i}",
+            "title": f"Demo Calendar Event #{i}",
+            "start": event_start.isoformat().replace("+00:00", "Z"),
+            "end": event_end.isoformat().replace("+00:00", "Z"),
+            "all_day": is_all_day,
+            "calendar": calendar or "Calendar",
+            "location": f"Location {i}" if not is_all_day else "",
+            "description": f"Demo event description for event #{i}",
+            "attendees": []
+        })
+    
+    return events
+
+
+@app.get("/v1/calendar/event/{event_id}")
+async def get_calendar_event(event_id: str):
+    """Get a specific calendar event by ID."""
+    # Live mode: fetch from macOS Calendar
+    if CALENDAR_BRIDGE_MODE == "live":
+        cache_key = f"event:{event_id}"
+        
+        # Try cache first
+        cached_data = _get_cached_calendar(cache_key)
+        if cached_data is not None and cached_data:
+            print(f"[bridge] returning cached calendar event for {cache_key}")
+            return cached_data[0]  # Single event
+        
+        # Fetch live data asynchronously
+        try:
+            live_data = await _fetch_live_calendar_async("get_event", event_id=event_id)
+            if live_data:
+                # Cache the result
+                _cache_calendar(cache_key, live_data)
+                print(f"[bridge] fetched and cached live calendar event for {cache_key}")
+                return live_data[0]
+            else:
+                return {"error": "Event not found"}
+        except Exception as live_err:
+            print(f"[bridge] live calendar event fetch failed: {live_err}")
+            return {"error": f"Event lookup failed: {live_err}"}
+    
+    # Demo mode: return demo event
+    if event_id == "event-1":
+        from datetime import datetime, timezone, timedelta
+        now = datetime.now(timezone.utc)
+        return {
+            "id": "event-1",
+            "title": "Demo Calendar Event",
+            "start": now.isoformat().replace("+00:00", "Z"),
+            "end": (now + timedelta(hours=1)).isoformat().replace("+00:00", "Z"),
+            "all_day": False,
+            "calendar": "Calendar", 
+            "location": "Conference Room A",
+            "description": "This is a demo calendar event for testing purposes.",
+            "attendees": []
+        }
+    
+    return {"error": "Event not found"}
+
+
+@app.post("/v1/calendar/events")
+async def create_calendar_event(event_data: dict):
+    """Create a new calendar event."""
+    # Live mode: create in macOS Calendar
+    if CALENDAR_BRIDGE_MODE == "live":
+        try:
+            live_data = await _fetch_live_calendar_async("create_event", event_data=event_data)
+            if live_data and live_data[0]:
+                print(f"[bridge] created calendar event: {live_data[0].get('title')}")
+                return live_data[0]
+            else:
+                return {"error": "Event creation failed", "created": False}
+        except Exception as live_err:
+            print(f"[bridge] live calendar event creation failed: {live_err}")
+            return {"error": f"Event creation failed: {live_err}", "created": False}
+    
+    # Demo mode: return mock created event
+    import uuid
+    from datetime import datetime, timezone, timedelta
+    
+    event_id = f"demo-event-{str(uuid.uuid4())[:8]}"
+    now = datetime.now(timezone.utc)
+    
+    return {
+        "id": event_id,
+        "title": event_data.get("title", "New Demo Event"),
+        "start": event_data.get("start", now.isoformat().replace("+00:00", "Z")),
+        "end": event_data.get("end", (now + timedelta(hours=1)).isoformat().replace("+00:00", "Z")),
+        "all_day": event_data.get("all_day", False),
+        "calendar": event_data.get("calendar", "Calendar"),
+        "location": event_data.get("location", ""),
+        "description": event_data.get("description", ""),
+        "created": True
     }
 
 

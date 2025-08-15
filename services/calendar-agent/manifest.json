@@ -1,0 +1,155 @@
+{
+  "agent_id": "calendar-agent",
+  "version": "1.0.0",
+  "display_name": "Calendar Agent",
+  "description": "Apple Calendar integration with event reading, proposal generation, and approval-based writing",
+  "capabilities": [
+    {
+      "verb": "calendar.read",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "calendar_name": {"type": "string"},
+          "date_range": {
+            "type": "object",
+            "properties": {
+              "start": {"type": "string", "format": "date-time"},
+              "end": {"type": "string", "format": "date-time"}
+            },
+            "required": ["start", "end"]
+          },
+          "event_id": {"type": "string"},
+          "include_all_day": {"type": "boolean", "default": true},
+          "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 50}
+        },
+        "anyOf": [
+          {"required": ["date_range"]},
+          {"required": ["event_id"]}
+        ]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {"type": "string"},
+                "title": {"type": "string"},
+                "start": {"type": "string", "format": "date-time"},
+                "end": {"type": "string", "format": "date-time"},
+                "all_day": {"type": "boolean"},
+                "calendar": {"type": "string"},
+                "location": {"type": "string"},
+                "description": {"type": "string"},
+                "attendees": {"type": "array"}
+              }
+            }
+          },
+          "count": {"type": "integer"},
+          "date_range": {"type": "object"}
+        }
+      },
+      "safety_annotations": ["read-only"],
+      "description": "Read calendar events from Apple Calendar with date filtering"
+    },
+    {
+      "verb": "calendar.propose_event",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "title": {"type": "string"},
+          "start": {"type": "string", "format": "date-time"},
+          "end": {"type": "string", "format": "date-time"},
+          "all_day": {"type": "boolean", "default": false},
+          "calendar_name": {"type": "string"},
+          "location": {"type": "string"},
+          "description": {"type": "string"},
+          "attendees": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "recurrence": {"type": "string"},
+          "reminder_minutes": {"type": "integer", "minimum": 0}
+        },
+        "required": ["title", "start", "end"]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "proposal": {
+            "type": "object",
+            "properties": {
+              "proposal_id": {"type": "string"},
+              "title": {"type": "string"},
+              "start": {"type": "string", "format": "date-time"},
+              "end": {"type": "string", "format": "date-time"},
+              "all_day": {"type": "boolean"},
+              "calendar": {"type": "string"},
+              "location": {"type": "string"},
+              "description": {"type": "string"},
+              "attendees": {"type": "array"},
+              "conflicts": {"type": "array"},
+              "suggestions": {"type": "array"}
+            }
+          },
+          "requires_approval": {"type": "boolean"},
+          "approval_reason": {"type": "string"}
+        }
+      },
+      "safety_annotations": ["requires-approval"],
+      "description": "Generate event proposals with conflict detection and approval requirements"
+    },
+    {
+      "verb": "calendar.write_event",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "proposal_id": {"type": "string"},
+          "approved": {"type": "boolean"},
+          "approval_token": {"type": "string"},
+          "modifications": {
+            "type": "object",
+            "properties": {
+              "title": {"type": "string"},
+              "start": {"type": "string", "format": "date-time"},
+              "end": {"type": "string", "format": "date-time"},
+              "location": {"type": "string"},
+              "description": {"type": "string"}
+            }
+          }
+        },
+        "required": ["proposal_id", "approved"]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "event": {
+            "type": "object",
+            "properties": {
+              "id": {"type": "string"},
+              "title": {"type": "string"},
+              "start": {"type": "string", "format": "date-time"},
+              "end": {"type": "string", "format": "date-time"},
+              "created": {"type": "boolean"},
+              "calendar": {"type": "string"}
+            }
+          },
+          "status": {"type": "string"},
+          "message": {"type": "string"}
+        }
+      },
+      "safety_annotations": ["requires-approval", "write-operation"],
+      "description": "Create approved calendar events in Apple Calendar"
+    }
+  ],
+  "data_scopes": ["calendar:events", "calendar:calendars"],
+  "tool_access": ["macos-bridge", "approval-workflow"],
+  "egress_domains": [],
+  "health_check": {
+    "endpoint": "/health",
+    "interval_seconds": 60,
+    "timeout_seconds": 10
+  }
+}
