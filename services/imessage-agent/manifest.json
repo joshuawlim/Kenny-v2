@@ -1,0 +1,108 @@
+{
+  "agent_id": "imessage-agent",
+  "version": "1.0.0",
+  "display_name": "iMessage Agent",
+  "description": "Read-only iMessage search, read, and reply proposal capabilities",
+  "capabilities": [
+    {
+      "verb": "messages.search",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {"type": "string"},
+          "contact": {"type": "string"},
+          "thread_id": {"type": "string"},
+          "since": {"type": "string", "format": "date-time"},
+          "until": {"type": "string", "format": "date-time"},
+          "limit": {"type": "integer", "minimum": 1, "maximum": 100}
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "results": {"type": "array"},
+          "count": {"type": "integer"},
+          "thread_context": {"type": "object"}
+        }
+      },
+      "safety_annotations": ["read-only"],
+      "description": "Search iMessage conversations with filters and context"
+    },
+    {
+      "verb": "messages.read",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "message_id": {"type": "string"},
+          "thread_id": {"type": "string"},
+          "include_context": {"type": "boolean", "default": true},
+          "context_length": {"type": "integer", "minimum": 0, "maximum": 50}
+        },
+        "anyOf": [
+          {"required": ["message_id"]},
+          {"required": ["thread_id"]}
+        ]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "message": {"type": "object"},
+          "thread_metadata": {"type": "object"},
+          "participants": {"type": "array"}
+        }
+      },
+      "safety_annotations": ["read-only"],
+      "description": "Read full iMessage content with thread context and metadata"
+    },
+    {
+      "verb": "messages.propose_reply",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "message_id": {"type": "string"},
+          "thread_id": {"type": "string"},
+          "message_content": {"type": "string"},
+          "reply_style": {
+            "type": "string",
+            "enum": ["casual", "professional", "brief"],
+            "default": "casual"
+          },
+          "context_length": {"type": "integer", "minimum": 1, "maximum": 10, "default": 3},
+          "max_proposals": {"type": "integer", "minimum": 1, "maximum": 5, "default": 3}
+        },
+        "anyOf": [
+          {"required": ["message_id"]},
+          {"required": ["thread_id", "message_content"]}
+        ]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "proposals": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "reply_text": {"type": "string"},
+                "confidence": {"type": "number"},
+                "reasoning": {"type": "string"},
+                "style": {"type": "string"}
+              }
+            }
+          },
+          "original_message": {"type": "object"}
+        }
+      },
+      "safety_annotations": ["read-only"],
+      "description": "Generate contextual reply proposals for iMessage conversations"
+    }
+  ],
+  "data_scopes": ["imessage:messages", "imessage:threads"],
+  "tool_access": ["macos-bridge", "sqlite-db"],
+  "egress_domains": [],
+  "health_check": {
+    "endpoint": "/health",
+    "interval_seconds": 60,
+    "timeout_seconds": 10
+  }
+}
