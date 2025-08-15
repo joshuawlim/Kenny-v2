@@ -1,0 +1,10 @@
+// Export all page components
+export { DashboardPage } from './Dashboard'
+export { AgentsPage } from './Agents'
+export { QueryPage } from './Query'
+export { HealthPage } from './Health'
+export { SecurityPage } from './Security'
+export { AnalyticsPage } from './Analytics'
+export { TracesPage } from './Traces'
+export { AlertsPage } from './Alerts'
+export { NotFoundPage } from './NotFound'
