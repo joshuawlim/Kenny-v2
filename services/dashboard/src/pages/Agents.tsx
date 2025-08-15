@@ -2,7 +2,30 @@
 import React from 'react'
 import { Users, Activity, Clock, CheckCircle, AlertCircle } from 'lucide-react'
 import { useAgents, useCapabilitiesByAgent } from '@/hooks'
-import { MetricCard } from '@/components/dashboard'
+// Using custom MetricCard for this page
+const MetricCard: React.FC<any> = ({ title, value, description, icon: Icon, status, loading }) => (
+  <div className="glass-card rounded-2xl p-6">
+    <div className="flex items-center space-x-3 mb-3">
+      <div className="w-10 h-10 rounded-lg bg-kenny-primary/10 flex items-center justify-center">
+        <Icon className="w-5 h-5 text-kenny-primary" />
+      </div>
+      <div>
+        <h3 className="font-medium text-kenny-gray-800">{title}</h3>
+      </div>
+    </div>
+    {loading ? (
+      <div className="animate-pulse">
+        <div className="h-8 bg-kenny-gray-200 rounded w-16 mb-2"></div>
+        <div className="h-4 bg-kenny-gray-200 rounded w-24"></div>
+      </div>
+    ) : (
+      <>
+        <div className="text-2xl font-bold text-kenny-gray-800 mb-1">{value}</div>
+        <div className="text-sm text-kenny-gray-600">{description}</div>
+      </>
+    )}
+  </div>
+)
 import { format } from 'date-fns'
 
 export const AgentsPage: React.FC = () => {
