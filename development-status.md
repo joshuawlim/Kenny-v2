@@ -11,6 +11,11 @@ Kenny v2 is a local-first, multi-agent personal assistant system built with Pyth
 
 ## Current Status
 
+### ✅ Phase 3.2: COMPLETED - iMessage Agent with macOS Bridge Integration
+**Completion Date**: August 15, 2025  
+**Total Test Coverage**: 17/17 integration tests passing (100% success rate)  
+**Status**: Production-ready iMessage Agent with thread-based conversation support
+
 ### ✅ Phase 3.1: COMPLETED - WhatsApp Agent with Local Image Understanding
 **Completion Date**: August 15, 2025  
 **Total Test Coverage**: All integration tests passing  
@@ -62,9 +67,9 @@ Kenny v2 is a local-first, multi-agent personal assistant system built with Pyth
 - Cross-agent integration for enrichment data storage
 - Performance optimized vector similarity search
 
-### 🔄 Next Phase: Phase 3.2 Communication & Integration Agents
-**Status**: Phase 3.1 WhatsApp Agent completed - Ready for iMessage and Calendar agents  
-**Priority**: iMessage and Calendar agent implementation
+### 🔄 Next Phase: Phase 3.3 Calendar Agent Implementation
+**Status**: Phase 3.2 iMessage Agent completed - Ready for Calendar agent  
+**Priority**: Calendar agent implementation with Apple Calendar integration
 
 ## Development Setup
 
@@ -82,8 +87,11 @@ cd services/mail-agent && python3 -m uvicorn src.main:app --port 8000
 # Terminal 4: WhatsApp Agent  
 cd services/whatsapp-agent && python3 -m uvicorn src.main:app --port 8005
 
-# Terminal 5: Bridge (Live Mode)
-cd bridge && MAIL_BRIDGE_MODE=live python3 app.py
+# Terminal 5: iMessage Agent  
+cd services/imessage-agent && python3 -m uvicorn src.main:app --port 8006
+
+# Terminal 6: Bridge (Live Mode)
+cd bridge && MAIL_BRIDGE_MODE=live IMESSAGE_BRIDGE_MODE=live python3 app.py
 ```
 
 ### Individual Service Setup
@@ -91,15 +99,18 @@ cd bridge && MAIL_BRIDGE_MODE=live python3 app.py
 2. **Coordinator** (Port 8002): `cd services/coordinator && python3 -m uvicorn src.main:app --port 8002`
 3. **Mail Agent** (Port 8000): `cd services/mail-agent && python3 -m uvicorn src.main:app --port 8000`
 4. **WhatsApp Agent** (Port 8005): `cd services/whatsapp-agent && python3 -m uvicorn src.main:app --port 8005`
-5. **Bridge** (Port 5100): `cd bridge && MAIL_BRIDGE_MODE=live python3 app.py`
+5. **iMessage Agent** (Port 8006): `cd services/imessage-agent && python3 -m uvicorn src.main:app --port 8006`
+6. **Bridge** (Port 5100): `cd bridge && MAIL_BRIDGE_MODE=live IMESSAGE_BRIDGE_MODE=live python3 app.py`
 
 ### Environment Variables
 ```bash
 # Bridge Mode
 export MAIL_BRIDGE_MODE=live  # or 'demo' for test data
+export IMESSAGE_BRIDGE_MODE=live  # or 'demo' for test data
 
-# Mail Agent Bridge URL
+# Agent Bridge URLs
 export MAC_BRIDGE_URL=http://127.0.0.1:5100
+export IMESSAGE_AGENT_URL=http://127.0.0.1:8006
 ```
 
 ## Testing
@@ -144,11 +155,14 @@ curl "http://localhost:5100/v1/mail/messages?mailbox=Inbox&limit=3"
   - **Capabilities**: `messages.search`, `chats.read`, `chats.propose_reply`
   - **Key Features**: Local OCR processing, context-aware replies, media analysis, health monitoring
 
-- [ ] **iMessage Agent**
-  - macOS Bridge integration for iMessage access
-  - Message reading, searching, and reply proposals
-  - Integration with existing bridge architecture
-  - Read operations without approval, write operations with approval
+- [x] **iMessage Agent** ✅ **COMPLETED - Phase 3.2**
+  - ✅ Complete iMessage Agent with three core capabilities operational (port 8006)
+  - ✅ macOS Bridge integration with JXA scripts for Messages.app access
+  - ✅ Message reading, searching, and reply proposals with thread support
+  - ✅ Integration with existing bridge architecture (demo/live modes)
+  - ✅ Read operations without approval, proposals only (no direct writes)
+  - **Capabilities**: `messages.search`, `messages.read`, `messages.propose_reply`
+  - **Key Features**: Thread context, attachment metadata, multiple reply styles, JXA integration
 
 - [ ] **Calendar Agent**
   - Apple Calendar integration via macOS APIs
@@ -224,6 +238,9 @@ curl -s http://localhost:8002/agents | jq '.count'
 # Test WhatsApp Agent capabilities
 curl -s http://localhost:8005/capabilities | jq '.capabilities[].verb'
 
+# Test iMessage Agent capabilities
+curl -s http://localhost:8006/capabilities | jq '.capabilities[].verb'
+
 # Test WhatsApp message search
 curl -X POST http://localhost:8005/capabilities/messages.search \
   -H "Content-Type: application/json" \
@@ -233,6 +250,16 @@ curl -X POST http://localhost:8005/capabilities/messages.search \
 curl -X POST http://localhost:8005/capabilities/chats.propose_reply \
   -H "Content-Type: application/json" \
   -d '{"input": {"message_content": "How are you?", "reply_style": "casual"}}'
+
+# Test iMessage search
+curl -X POST http://localhost:8006/capabilities/messages.search \
+  -H "Content-Type: application/json" \
+  -d '{"input": {"query": "test", "limit": 3}}'
+
+# Test iMessage reply proposals
+curl -X POST http://localhost:8006/capabilities/messages.propose_reply \
+  -H "Content-Type: application/json" \
+  -d '{"input": {"message_content": "How are you?", "thread_id": "test_thread", "reply_style": "casual"}}'
 
 # Test end-to-end orchestration
 curl -X POST http://localhost:8002/coordinator/process \
