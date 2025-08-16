@@ -37,7 +37,7 @@ from pathlib import Path
 try:
     import objc
     from EventKit import (
-        EKEventStore, EKAuthorizationStatus, EKEntityType,
+        EKEventStore, EKEntityTypeEvent, EKAuthorizationStatusAuthorized, EKAuthorizationStatusWriteOnly,
         EKEventStoreChangedNotification, EKEvent, EKCalendar
     )
     from Foundation import NSNotificationCenter, NSRunLoop, NSDefaultRunLoopMode
@@ -168,9 +168,9 @@ class EventKitSyncEngine:
             self.event_store = EKEventStore.alloc().init()
             
             # Request calendar access
-            auth_status = EKEventStore.authorizationStatusForEntityType_(EKEntityType.EKEntityTypeEvent)
+            auth_status = EKEventStore.authorizationStatusForEntityType_(EKEntityTypeEvent)
             
-            if auth_status != EKAuthorizationStatus.EKAuthorizationStatusAuthorized:
+            if auth_status not in [EKAuthorizationStatusAuthorized, EKAuthorizationStatusWriteOnly]:
                 logger.info("Requesting EventKit authorization...")
                 
                 # Request access (this will prompt user if needed)
@@ -181,15 +181,15 @@ class EventKitSyncEngine:
                         logger.info("EventKit access granted")
                 
                 self.event_store.requestAccessToEntityType_completion_(
-                    EKEntityType.EKEntityTypeEvent, auth_completion
+                    EKEntityTypeEvent, auth_completion
                 )
                 
                 # Wait a moment for auth to complete
                 await asyncio.sleep(1.0)
                 
                 # Check final status
-                final_status = EKEventStore.authorizationStatusForEntityType_(EKEntityType.EKEntityTypeEvent)
-                if final_status != EKAuthorizationStatus.EKAuthorizationStatusAuthorized:
+                final_status = EKEventStore.authorizationStatusForEntityType_(EKEntityTypeEvent)
+                if final_status not in [EKAuthorizationStatusAuthorized, EKAuthorizationStatusWriteOnly]:
                     logger.error("EventKit authorization failed")
                     return False
             
@@ -390,7 +390,7 @@ class EventKitSyncEngine:
         calendars = {}
         
         try:
-            ek_calendars = self.event_store.calendarsForEntityType_(EKEntityType.EKEntityTypeEvent)
+            ek_calendars = self.event_store.calendarsForEntityType_(EKEntityTypeEvent)
             
             for ek_calendar in ek_calendars:
                 calendar_id = ek_calendar.calendarIdentifier()

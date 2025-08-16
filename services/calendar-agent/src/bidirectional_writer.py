@@ -38,7 +38,7 @@ from contextlib import asynccontextmanager
 # Import EventKit components
 try:
     import objc
-    from EventKit import EKEventStore, EKEvent, EKCalendar, EKEntityType
+    from EventKit import EKEventStore, EKEvent, EKCalendar, EKEntityTypeEvent
     from Foundation import NSDate, NSCalendar
     EVENTKIT_AVAILABLE = True
 except ImportError:
@@ -195,7 +195,7 @@ class BidirectionalWriter:
             self.event_store = EKEventStore.alloc().init()
             
             # Verify write access
-            auth_status = EKEventStore.authorizationStatusForEntityType_(EKEntityType.EKEntityTypeEvent)
+            auth_status = EKEventStore.authorizationStatusForEntityType_(EKEntityTypeEvent)
             
             if auth_status != 2:  # EKAuthorizationStatusAuthorized
                 logger.warning("EventKit write access not authorized")
@@ -620,7 +620,7 @@ class BidirectionalWriter:
         """Create event using EventKit."""
         try:
             # Get calendar
-            calendars = self.event_store.calendarsForEntityType_(EKEntityType.EKEntityTypeEvent)
+            calendars = self.event_store.calendarsForEntityType_(EKEntityTypeEvent)
             target_calendar = None
             
             for calendar in calendars:

@@ -108,17 +108,20 @@ check_eventkit_permissions() {
     local python_check=$(cat << 'EOF'
 import sys
 try:
-    from EventKit import EKEventStore, EKAuthorizationStatus, EKEntityType
+    from EventKit import (EKEventStore, EKEntityTypeEvent, 
+                         EKAuthorizationStatusNotDetermined, EKAuthorizationStatusDenied,
+                         EKAuthorizationStatusRestricted, EKAuthorizationStatusAuthorized,
+                         EKAuthorizationStatusWriteOnly)
     from Foundation import NSRunLoop, NSDate
     import objc
     
     # Create event store
     store = EKEventStore.alloc().init()
     
-    # Check current authorization status
-    status = EKEventStore.authorizationStatusForEntityType_(EKEntityType.EKEntityTypeEvent)
+    # Check current authorization status - use the integer constant directly
+    status = EKEventStore.authorizationStatusForEntityType_(EKEntityTypeEvent)
     
-    if status == EKAuthorizationStatus.EKAuthorizationStatusNotDetermined:
+    if status == EKAuthorizationStatusNotDetermined:
         print("PERMISSION_NEEDED")
         # Request permission (this will show the system dialog)
         def completion_handler(granted, error):
@@ -128,16 +131,16 @@ try:
                 print("PERMISSION_DENIED")
             NSRunLoop.currentRunLoop().stop()
         
-        store.requestAccessToEntityType_completion_(EKEntityType.EKEntityTypeEvent, completion_handler)
+        store.requestAccessToEntityType_completion_(EKEntityTypeEvent, completion_handler)
         NSRunLoop.currentRunLoop().runUntilDate_(NSDate.dateWithTimeIntervalSinceNow_(10.0))
         
-    elif status == EKAuthorizationStatus.EKAuthorizationStatusDenied:
+    elif status == EKAuthorizationStatusDenied:
         print("PERMISSION_DENIED")
         sys.exit(1)
-    elif status == EKAuthorizationStatus.EKAuthorizationStatusRestricted:
+    elif status == EKAuthorizationStatusRestricted:
         print("PERMISSION_RESTRICTED")
         sys.exit(1)
-    elif status == EKAuthorizationStatus.EKAuthorizationStatusAuthorized:
+    elif status == EKAuthorizationStatusAuthorized or status == EKAuthorizationStatusWriteOnly:
         print("PERMISSION_GRANTED")
     else:
         print("PERMISSION_UNKNOWN")

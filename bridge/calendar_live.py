@@ -2,14 +2,145 @@
 Live Calendar integration using JXA (JavaScript for Automation).
 
 This module provides functions to interact with Apple Calendar.app via JXA.
+Enhanced with robust error handling, retry mechanisms, and performance optimizations
+for Phase 3.5 emergency stabilization.
 """
 
 import subprocess
 import json
+import time
+import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
+from functools import wraps
+
+# Configure logging
+logger = logging.getLogger("calendar_live")
+
+# Retry configuration
+DEFAULT_RETRY_COUNT = 3
+DEFAULT_RETRY_DELAY = 1.0  # seconds
+DEFAULT_TIMEOUT = 30  # seconds
 
 
+def retry_on_failure(max_retries=DEFAULT_RETRY_COUNT, delay=DEFAULT_RETRY_DELAY, backoff_factor=2.0):
+    """
+    Retry decorator with exponential backoff for JXA operations.
+    
+    Args:
+        max_retries: Maximum number of retry attempts
+        delay: Initial delay between retries (seconds)
+        backoff_factor: Multiplier for delay on each retry
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            last_exception = None
+            current_delay = delay
+            
+            for attempt in range(max_retries + 1):
+                try:
+                    if attempt > 0:
+                        logger.info(f"Retrying {func.__name__} (attempt {attempt + 1}/{max_retries + 1})")
+                        time.sleep(current_delay)
+                        current_delay *= backoff_factor
+                    
+                    return func(*args, **kwargs)
+                    
+                except subprocess.TimeoutExpired as e:
+                    last_exception = e
+                    logger.warning(f"{func.__name__} timed out on attempt {attempt + 1}")
+                    continue
+                    
+                except subprocess.CalledProcessError as e:
+                    last_exception = e
+                    logger.warning(f"{func.__name__} failed with return code {e.returncode} on attempt {attempt + 1}")
+                    # Don't retry on permission errors (return code 1)
+                    if e.returncode == 1:
+                        break
+                    continue
+                    
+                except json.JSONDecodeError as e:
+                    last_exception = e
+                    logger.warning(f"{func.__name__} returned invalid JSON on attempt {attempt + 1}")
+                    continue
+                    
+                except Exception as e:
+                    last_exception = e
+                    logger.warning(f"{func.__name__} failed with unexpected error on attempt {attempt + 1}: {e}")
+                    continue
+            
+            # All retries exhausted
+            logger.error(f"{func.__name__} failed after {max_retries + 1} attempts")
+            if last_exception:
+                logger.error(f"Last error: {last_exception}")
+            return [] if func.__name__.startswith('list_') else None
+            
+        return wrapper
+    return decorator
+
+
+def execute_jxa_script(script: str, timeout: int = DEFAULT_TIMEOUT) -> subprocess.CompletedProcess:
+    """
+    Execute a JXA script with robust error handling.
+    
+    Args:
+        script: JXA script to execute
+        timeout: Timeout in seconds
+        
+    Returns:
+        CompletedProcess result
+        
+    Raises:
+        subprocess.TimeoutExpired: If script times out
+        subprocess.CalledProcessError: If script fails
+    """
+    try:
+        result = subprocess.run(
+            ["osascript", "-l", "JavaScript", "-e", script],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=True  # Raises CalledProcessError on non-zero exit
+        )
+        return result
+        
+    except subprocess.TimeoutExpired:
+        logger.error(f"JXA script timed out after {timeout} seconds")
+        raise
+        
+    except subprocess.CalledProcessError as e:
+        logger.error(f"JXA script failed with return code {e.returncode}: {e.stderr}")
+        raise
+
+
+def parse_jxa_result(result: subprocess.CompletedProcess, operation_name: str) -> Any:
+    """
+    Parse JXA script result with error handling.
+    
+    Args:
+        result: subprocess result
+        operation_name: Name of operation for logging
+        
+    Returns:
+        Parsed JSON data or None on error
+    """
+    try:
+        if not result.stdout.strip():
+            logger.warning(f"{operation_name}: Empty response from JXA script")
+            return None
+            
+        data = json.loads(result.stdout.strip())
+        logger.debug(f"{operation_name}: Successfully parsed JXA response")
+        return data
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"{operation_name}: Invalid JSON response: {e}")
+        logger.error(f"Raw output: {result.stdout}")
+        return None
+
+
+@retry_on_failure(max_retries=2, delay=0.5)
 def list_calendars() -> List[Dict[str, Any]]:
     """
     Get list of all calendars from Calendar.app.
@@ -19,54 +150,59 @@ def list_calendars() -> List[Dict[str, Any]]:
     """
     jxa_script = '''
     (function() {
-        const app = Application("Calendar");
-        const calendars = app.calendars;
-        const result = [];
-        
-        for (let i = 0; i < calendars.length; i++) {
-            const calendar = calendars[i];
-            try {
-                result.push({
-                    id: calendar.id(),
-                    name: calendar.name(),
-                    description: calendar.description() || "",
-                    color: calendar.color() || "blue",
-                    writable: calendar.writable(),
-                    visible: calendar.visible()
-                });
-            } catch (e) {
-                // Skip calendars that can't be accessed
+        try {
+            const app = Application("Calendar");
+            const calendars = app.calendars;
+            const result = [];
+            
+            for (let i = 0; i < calendars.length; i++) {
+                const calendar = calendars[i];
+                try {
+                    result.push({
+                        id: calendar.id(),
+                        name: calendar.name(),
+                        description: calendar.description() || "",
+                        color: calendar.color() || "blue",
+                        writable: calendar.writable(),
+                        visible: calendar.visible()
+                    });
+                } catch (e) {
+                    // Skip calendars that can't be accessed
+                    console.log("Skipping calendar due to access error: " + e.toString());
+                }
             }
+            
+            return JSON.stringify(result);
+        } catch (e) {
+            return JSON.stringify({error: "Failed to access Calendar app: " + e.toString()});
         }
-        
-        return JSON.stringify(result);
     })();
     '''
     
     try:
-        result = subprocess.run(
-            ["osascript", "-l", "JavaScript", "-e", jxa_script],
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
+        result = execute_jxa_script(jxa_script, timeout=20)
+        data = parse_jxa_result(result, "list_calendars")
         
-        if result.returncode == 0 and result.stdout:
-            calendars = json.loads(result.stdout.strip())
-            print(f"[calendar_live] Found {len(calendars)} calendars")
-            return calendars
-        else:
-            print(f"[calendar_live] JXA error: {result.stderr}")
+        if data is None:
             return []
-            
-    except subprocess.TimeoutExpired:
-        print("[calendar_live] Calendar list timeout")
+        
+        if isinstance(data, dict) and "error" in data:
+            logger.error(f"Calendar app error: {data['error']}")
+            return []
+        
+        if isinstance(data, list):
+            logger.info(f"Found {len(data)} calendars")
+            return data
+        
+        logger.warning(f"Unexpected data format: {type(data)}")
         return []
+        
     except Exception as e:
-        print(f"[calendar_live] Error listing calendars: {e}")
+        logger.error(f"Error listing calendars: {e}")
         return []
 
 
+@retry_on_failure(max_retries=3, delay=1.0)
 def list_events(calendar_name: Optional[str] = None, start_date: Optional[str] = None, 
                 end_date: Optional[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
     """
@@ -109,81 +245,87 @@ def list_events(calendar_name: Optional[str] = None, start_date: Optional[str] =
     
     jxa_script = f'''
     (function() {{
-        const app = Application("Calendar");
-        {date_filter}
-        {calendar_filter}
-        const limit = {limit};
-        
-        const calendars = targetCalendarName ? 
-            app.calendars.whose({{name: targetCalendarName}}) : 
-            app.calendars;
-        
-        const result = [];
-        let eventCount = 0;
-        
-        for (let i = 0; i < calendars.length && eventCount < limit; i++) {{
-            const calendar = calendars[i];
-            try {{
-                const events = calendar.events.whose({{
-                    startDate: {{">": startDate}},
-                    endDate: {{"<": endDate}}
-                }});
-                
-                for (let j = 0; j < events.length && eventCount < limit; j++) {{
-                    const event = events[j];
-                    try {{
-                        const eventStart = event.startDate();
-                        const eventEnd = event.endDate();
-                        
-                        result.push({{
-                            id: event.id(),
-                            title: event.summary() || "Untitled",
-                            start: eventStart.toISOString(),
-                            end: eventEnd.toISOString(),
-                            all_day: event.allDayEvent(),
-                            calendar: calendar.name(),
-                            location: event.location() || "",
-                            description: event.description() || "",
-                            attendees: []  // JXA doesn't easily expose attendees
-                        }});
-                        eventCount++;
-                    }} catch (e) {{
-                        // Skip events that can't be accessed
+        try {{
+            const app = Application("Calendar");
+            {date_filter}
+            {calendar_filter}
+            const limit = {limit};
+            
+            const calendars = targetCalendarName ? 
+                app.calendars.whose({{name: targetCalendarName}}) : 
+                app.calendars;
+            
+            const result = [];
+            let eventCount = 0;
+            
+            for (let i = 0; i < calendars.length && eventCount < limit; i++) {{
+                const calendar = calendars[i];
+                try {{
+                    const events = calendar.events.whose({{
+                        startDate: {{">": startDate}},
+                        endDate: {{"<": endDate}}
+                    }});
+                    
+                    for (let j = 0; j < events.length && eventCount < limit; j++) {{
+                        const event = events[j];
+                        try {{
+                            const eventStart = event.startDate();
+                            const eventEnd = event.endDate();
+                            
+                            result.push({{
+                                id: event.id(),
+                                title: event.summary() || "Untitled",
+                                start: eventStart.toISOString(),
+                                end: eventEnd.toISOString(),
+                                all_day: event.allDayEvent(),
+                                calendar: calendar.name(),
+                                location: event.location() || "",
+                                description: event.description() || "",
+                                attendees: []  // JXA doesn't easily expose attendees
+                            }});
+                            eventCount++;
+                        }} catch (e) {{
+                            // Skip events that can't be accessed
+                            console.log("Skipping event due to access error: " + e.toString());
+                        }}
                     }}
+                }} catch (e) {{
+                    // Skip calendars that can't be accessed
+                    console.log("Skipping calendar due to access error: " + e.toString());
                 }}
-            }} catch (e) {{
-                // Skip calendars that can't be accessed
             }}
+            
+            return JSON.stringify(result);
+        }} catch (e) {{
+            return JSON.stringify({{error: "Failed to access Calendar app: " + e.toString()}});
         }}
-        
-        return JSON.stringify(result);
     }})();
     '''
     
     try:
-        result = subprocess.run(
-            ["osascript", "-l", "JavaScript", "-e", jxa_script],
-            capture_output=True,
-            text=True,
-            timeout=45
-        )
+        result = execute_jxa_script(jxa_script, timeout=35)
+        data = parse_jxa_result(result, "list_events")
         
-        if result.returncode == 0 and result.stdout:
-            events = json.loads(result.stdout.strip())
-            print(f"[calendar_live] Found {len(events)} events")
-            return events
-        else:
-            print(f"[calendar_live] JXA error: {result.stderr}")
+        if data is None:
             return []
-            
-    except subprocess.TimeoutExpired:
-        print("[calendar_live] Calendar events timeout")
+        
+        if isinstance(data, dict) and "error" in data:
+            logger.error(f"Calendar app error: {data['error']}")
+            return []
+        
+        if isinstance(data, list):
+            logger.info(f"Found {len(data)} events")
+            return data
+        
+        logger.warning(f"Unexpected data format: {type(data)}")
         return []
+        
     except Exception as e:
-        print(f"[calendar_live] Error listing events: {e}")
+        logger.error(f"Error listing events: {e}")
         return []
 
 
+@retry_on_failure(max_retries=2, delay=0.5)
 def get_event_by_id(event_id: str) -> Optional[Dict[str, Any]]:
     """
     Get a specific event by ID from Calendar.app.
@@ -196,74 +338,77 @@ def get_event_by_id(event_id: str) -> Optional[Dict[str, Any]]:
     """
     jxa_script = f'''
     (function() {{
-        const app = Application("Calendar");
-        const targetId = "{event_id}";
-        const calendars = app.calendars;
-        
-        for (let i = 0; i < calendars.length; i++) {{
-            const calendar = calendars[i];
-            try {{
-                const events = calendar.events;
-                for (let j = 0; j < events.length; j++) {{
-                    const event = events[j];
-                    try {{
-                        if (event.id() === targetId) {{
-                            const eventStart = event.startDate();
-                            const eventEnd = event.endDate();
-                            
-                            return JSON.stringify({{
-                                id: event.id(),
-                                title: event.summary() || "Untitled",
-                                start: eventStart.toISOString(),
-                                end: eventEnd.toISOString(),
-                                all_day: event.allDayEvent(),
-                                calendar: calendar.name(),
-                                location: event.location() || "",
-                                description: event.description() || "",
-                                attendees: []  // JXA doesn't easily expose attendees
-                            }});
+        try {{
+            const app = Application("Calendar");
+            const targetId = "{event_id}";
+            const calendars = app.calendars;
+            
+            for (let i = 0; i < calendars.length; i++) {{
+                const calendar = calendars[i];
+                try {{
+                    const events = calendar.events;
+                    for (let j = 0; j < events.length; j++) {{
+                        const event = events[j];
+                        try {{
+                            if (event.id() === targetId) {{
+                                const eventStart = event.startDate();
+                                const eventEnd = event.endDate();
+                                
+                                return JSON.stringify({{
+                                    id: event.id(),
+                                    title: event.summary() || "Untitled",
+                                    start: eventStart.toISOString(),
+                                    end: eventEnd.toISOString(),
+                                    all_day: event.allDayEvent(),
+                                    calendar: calendar.name(),
+                                    location: event.location() || "",
+                                    description: event.description() || "",
+                                    attendees: []  // JXA doesn't easily expose attendees
+                                }});
+                            }}
+                        }} catch (e) {{
+                            // Skip events that can't be accessed
+                            console.log("Skipping event due to access error: " + e.toString());
                         }}
-                    }} catch (e) {{
-                        // Skip events that can't be accessed
                     }}
+                }} catch (e) {{
+                    // Skip calendars that can't be accessed
+                    console.log("Skipping calendar due to access error: " + e.toString());
                 }}
-            }} catch (e) {{
-                // Skip calendars that can't be accessed
             }}
+            
+            return JSON.stringify(null);
+        }} catch (e) {{
+            return JSON.stringify({{error: "Failed to access Calendar app: " + e.toString()}});
         }}
-        
-        return JSON.stringify(null);
     }})();
     '''
     
     try:
-        result = subprocess.run(
-            ["osascript", "-l", "JavaScript", "-e", jxa_script],
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
+        result = execute_jxa_script(jxa_script, timeout=25)
+        data = parse_jxa_result(result, "get_event_by_id")
         
-        if result.returncode == 0 and result.stdout:
-            event_data = json.loads(result.stdout.strip())
-            if event_data:
-                print(f"[calendar_live] Found event {event_id}")
-                return event_data
-            else:
-                print(f"[calendar_live] Event {event_id} not found")
-                return None
-        else:
-            print(f"[calendar_live] JXA error: {result.stderr}")
+        if data is None:
+            logger.info(f"Event {event_id} not found")
             return None
-            
-    except subprocess.TimeoutExpired:
-        print("[calendar_live] Calendar event lookup timeout")
+        
+        if isinstance(data, dict) and "error" in data:
+            logger.error(f"Calendar app error: {data['error']}")
+            return None
+        
+        if isinstance(data, dict):
+            logger.info(f"Found event {event_id}")
+            return data
+        
+        logger.info(f"Event {event_id} not found")
         return None
+        
     except Exception as e:
-        print(f"[calendar_live] Error getting event: {e}")
+        logger.error(f"Error getting event {event_id}: {e}")
         return None
 
 
+@retry_on_failure(max_retries=3, delay=1.0)
 def create_event(event_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
     Create a new event in Calendar.app.
@@ -343,30 +488,25 @@ def create_event(event_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     '''
     
     try:
-        result = subprocess.run(
-            ["osascript", "-l", "JavaScript", "-e", jxa_script],
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
+        result = execute_jxa_script(jxa_script, timeout=25)
+        data = parse_jxa_result(result, "create_event")
         
-        if result.returncode == 0 and result.stdout:
-            event_result = json.loads(result.stdout.strip())
-            if "error" in event_result:
-                print(f"[calendar_live] Event creation error: {event_result['error']}")
-                return None
-            else:
-                print(f"[calendar_live] Created event: {event_result.get('title')}")
-                return event_result
-        else:
-            print(f"[calendar_live] JXA error: {result.stderr}")
+        if data is None:
             return None
-            
-    except subprocess.TimeoutExpired:
-        print("[calendar_live] Calendar event creation timeout")
+        
+        if isinstance(data, dict) and "error" in data:
+            logger.error(f"Event creation error: {data['error']}")
+            return None
+        
+        if isinstance(data, dict) and data.get("created"):
+            logger.info(f"Created event: {data.get('title')}")
+            return data
+        
+        logger.warning(f"Unexpected create event response: {data}")
         return None
+        
     except Exception as e:
-        print(f"[calendar_live] Error creating event: {e}")
+        logger.error(f"Error creating event: {e}")
         return None
 
 
