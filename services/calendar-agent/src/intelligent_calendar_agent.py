@@ -13,6 +13,8 @@ Key Enhancements:
 
 import sys
 import os
+import logging
+import time
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
@@ -52,6 +54,11 @@ class IntelligentCalendarAgent(AgentServiceBase):
             egress_domains=[]
         )
         
+        # Setup logging
+        self.logger = logging.getLogger("intelligent-calendar-agent")
+        self.logger.setLevel(logging.INFO)
+        
+        self.logger.info(f"Initialized Intelligent Calendar Agent with LLM model: {llm_model}")
         print(f"Initialized Intelligent Calendar Agent with LLM model: {llm_model}")
         print("Initializing Intelligent Calendar Agent with LLM:", llm_model)
         
@@ -98,21 +105,28 @@ class IntelligentCalendarAgent(AgentServiceBase):
         self.register_capability(self.propose_event_handler)
         self.register_capability(self.write_event_handler)
         
+        # Create wrapper handler for enhanced capabilities
+        class EnhancedCapabilityHandler:
+            def __init__(self, agent, capability_name):
+                self.agent = agent
+                self.capability_name = capability_name
+            
+            async def execute(self, parameters):
+                return await self.agent._handle_enhanced_capability(self.capability_name, parameters)
+        
         # Enhanced capabilities for natural language processing
         enhanced_capabilities = [
             "calendar.smart_schedule",
             "calendar.conflict_resolve", 
             "calendar.meeting_prep",
             "calendar.availability_optimize",
-            "calendar.context_analyze"
+            "calendar.context_analyze",
+            "calendar.read_with_contacts"
         ]
         
         for capability in enhanced_capabilities:
-            self.capabilities[capability] = {
-                "handler": self._handle_enhanced_capability,
-                "description": f"Enhanced {capability} with LLM processing",
-                "confidence_scoring": True
-            }
+            handler = EnhancedCapabilityHandler(self, capability)
+            self.capabilities[capability] = handler
         
         print(f"Registered capabilities: {list(self.capabilities.keys())}")
     
@@ -142,29 +156,85 @@ class IntelligentCalendarAgent(AgentServiceBase):
         print(f"Registered cross-platform dependencies: {list(self.agent_dependencies.keys())}")
     
     async def _handle_enhanced_capability(self, capability: str, params: Dict[str, Any]) -> ConfidenceResult:
-        """Handle enhanced LLM-powered capabilities."""
+        """Handle enhanced LLM-powered capabilities with comprehensive error handling."""
+        start_time = time.time()
+        
         try:
+            self.logger.info(f"Executing enhanced capability: {capability} with params: {list(params.keys())}")
+            
             if capability == "calendar.smart_schedule":
-                return await self._smart_schedule_with_llm(params)
+                result = await self._smart_schedule_with_llm(params)
             elif capability == "calendar.conflict_resolve":
-                return await self._resolve_conflicts_with_llm(params)
+                result = await self._resolve_conflicts_with_llm(params)
             elif capability == "calendar.meeting_prep":
-                return await self._prepare_meeting_with_llm(params)
+                result = await self._prepare_meeting_with_llm(params)
             elif capability == "calendar.availability_optimize":
-                return await self._optimize_availability_with_llm(params)
+                result = await self._optimize_availability_with_llm(params)
             elif capability == "calendar.context_analyze":
-                return await self._analyze_context_with_llm(params)
+                result = await self._analyze_context_with_llm(params)
+            elif capability == "calendar.read_with_contacts":
+                query = params.get("query", "")
+                date_range = params.get("date_range")
+                result = await self._resolve_contacts_and_filter_events(query, date_range)
             else:
+                self.logger.error(f"Unknown enhanced capability requested: {capability}")
                 return ConfidenceResult(
                     result={"error": f"Unknown enhanced capability: {capability}"},
                     confidence=0.0,
                     reasoning="Capability not implemented"
                 )
-        except Exception as e:
+            
+            execution_time = time.time() - start_time
+            self.logger.info(f"Successfully executed {capability} in {execution_time:.3f}s with confidence {result.confidence}")
+            
+            return result
+            
+        except ValueError as e:
+            execution_time = time.time() - start_time
+            self.logger.error(f"ValueError in {capability} after {execution_time:.3f}s: {str(e)}")
             return ConfidenceResult(
-                result={"error": str(e)},
+                result={
+                    "error": f"Invalid parameters for {capability}: {str(e)}",
+                    "error_type": "validation_error"
+                },
                 confidence=0.0,
-                reasoning=f"Error processing {capability}: {str(e)}"
+                reasoning=f"Parameter validation failed for {capability}: {str(e)}"
+            )
+        except TimeoutError as e:
+            execution_time = time.time() - start_time
+            self.logger.error(f"TimeoutError in {capability} after {execution_time:.3f}s: {str(e)}")
+            return ConfidenceResult(
+                result={
+                    "error": f"Timeout executing {capability}: {str(e)}",
+                    "error_type": "timeout_error",
+                    "execution_time": execution_time
+                },
+                confidence=0.0,
+                reasoning=f"Capability {capability} timed out after {execution_time:.3f}s"
+            )
+        except ConnectionError as e:
+            execution_time = time.time() - start_time
+            self.logger.error(f"ConnectionError in {capability} after {execution_time:.3f}s: {str(e)}")
+            return ConfidenceResult(
+                result={
+                    "error": f"Connection error in {capability}: {str(e)}",
+                    "error_type": "connection_error",
+                    "fallback_suggestion": "Check calendar bridge connectivity"
+                },
+                confidence=0.0,
+                reasoning=f"Connection failed for {capability}: {str(e)}"
+            )
+        except Exception as e:
+            execution_time = time.time() - start_time
+            self.logger.error(f"Unexpected error in {capability} after {execution_time:.3f}s: {str(e)}", exc_info=True)
+            return ConfidenceResult(
+                result={
+                    "error": f"Unexpected error in {capability}: {str(e)}",
+                    "error_type": "unexpected_error",
+                    "execution_time": execution_time
+                },
+                confidence=0.0,
+                reasoning=f"Unexpected error processing {capability}: {str(e)}"
             )
     
     async def _smart_schedule_with_llm(self, params: Dict[str, Any]) -> ConfidenceResult:
@@ -305,37 +375,267 @@ class IntelligentCalendarAgent(AgentServiceBase):
     
     async def _analyze_context_with_llm(self, params: Dict[str, Any]) -> ConfidenceResult:
         """Analyze meeting context using LLM understanding."""
-        event = params.get("event", {})
-        related_communications = params.get("communications", [])
+        try:
+            query = params.get("query", "")
+            event = params.get("event", {})
+            related_communications = params.get("communications", [])
+            
+            # If we have a query but no specific event, try to extract context from the query
+            if query and not event:
+                # Parse query for context clues
+                context_info = {
+                    "query": query,
+                    "parsed_entities": self._extract_entities_from_query(query),
+                    "inferred_context": "User is asking about calendar events"
+                }
+                
+                prompt = f"""
+                Analyze this calendar query context:
+                
+                Query: "{query}"
+                
+                Extract and analyze:
+                1. Intent and purpose of the query
+                2. Key entities mentioned (people, dates, events)
+                3. Context clues about what information is needed
+                4. Potential follow-up questions or related information
+                5. Suggested calendar data to retrieve
+                
+                Provide structured context analysis.
+                """
+                
+                context_analysis = await self.process_with_llm(prompt)
+                
+                return ConfidenceResult(
+                    result={
+                        "context_analysis": context_analysis,
+                        "query_context": context_info,
+                        "analysis_type": "query_context"
+                    },
+                    confidence=0.75,
+                    reasoning="LLM analysis of calendar query context"
+                )
+            
+            # Original meeting context analysis
+            prompt = f"""
+            Analyze this meeting context:
+            
+            Event: {event}
+            Related Communications: {related_communications}
+            Query: {query}
+            
+            Extract:
+            1. Meeting purpose and objectives
+            2. Key stakeholders and their roles
+            3. Decision points and deliverables
+            4. Background context from communications
+            5. Success criteria and outcomes
+            6. Potential risks or challenges
+            
+            Provide comprehensive context analysis.
+            """
+            
+            context_analysis = await self.process_with_llm(prompt)
+            
+            return ConfidenceResult(
+                result={
+                    "context_analysis": context_analysis,
+                    "event": event,
+                    "communications": related_communications,
+                    "analysis_type": "meeting_context"
+                },
+                confidence=0.80,
+                reasoning="LLM context analysis of meeting and communications"
+            )
+            
+        except Exception as e:
+            return ConfidenceResult(
+                result={
+                    "error": f"Context analysis failed: {str(e)}",
+                    "fallback_analysis": "Unable to analyze context due to processing error"
+                },
+                confidence=0.0,
+                reasoning=f"Error in context analysis: {str(e)}"
+            )
+    
+    def _extract_entities_from_query(self, query: str) -> Dict[str, Any]:
+        """Extract entities from query text (simple implementation)."""
+        entities = {
+            "people": [],
+            "dates": [],
+            "events": [],
+            "actions": []
+        }
         
-        prompt = f"""
-        Analyze this meeting context:
+        # Simple keyword matching for people names (this could be enhanced)
+        import re
         
-        Event: {event}
-        Related Communications: {related_communications}
+        # Look for potential names (capitalized words)
+        potential_names = re.findall(r'\b[A-Z][a-z]+\b', query)
+        entities["people"] = potential_names
         
-        Extract:
-        1. Meeting purpose and objectives
-        2. Key stakeholders and their roles
-        3. Decision points and deliverables
-        4. Background context from communications
-        5. Success criteria and outcomes
-        6. Potential risks or challenges
+        # Look for date-related terms
+        date_terms = ["upcoming", "today", "tomorrow", "next week", "this week", "next month"]
+        for term in date_terms:
+            if term.lower() in query.lower():
+                entities["dates"].append(term)
         
-        Provide comprehensive context analysis.
+        # Look for event-related terms
+        event_terms = ["meeting", "event", "appointment", "call", "conference"]
+        for term in event_terms:
+            if term.lower() in query.lower():
+                entities["events"].append(term)
+                
+        return entities
+    
+    async def _resolve_contacts_and_filter_events(self, query: str, date_range: Optional[Dict[str, str]] = None) -> ConfidenceResult:
         """
+        Resolve contacts from query and filter calendar events by those contacts.
         
-        context_analysis = await self.process_with_llm(prompt)
+        Args:
+            query: Natural language query containing contact names
+            date_range: Optional date range for filtering events
+            
+        Returns:
+            ConfidenceResult with filtered calendar events
+        """
+        start_time = time.time()
         
-        return ConfidenceResult(
-            result={
-                "context_analysis": context_analysis,
-                "event": event,
-                "communications": related_communications
-            },
-            confidence=0.80,
-            reasoning="LLM context analysis of meeting and communications"
-        )
+        try:
+            self.logger.info(f"Resolving contacts and filtering events for query: '{query}'")
+            
+            # Extract potential contact names from query
+            entities = self._extract_entities_from_query(query)
+            contact_names = entities.get("people", [])
+            
+            if not contact_names:
+                self.logger.info("No contact names found in query, proceeding with regular calendar read")
+                # No contacts found, just return regular calendar read
+                read_params = {"query": query}
+                if date_range:
+                    read_params["date_range"] = date_range
+                
+                calendar_result = await self.read_handler.execute(read_params)
+                execution_time = time.time() - start_time
+                
+                return ConfidenceResult(
+                    result={
+                        "calendar_events": calendar_result,
+                        "resolved_contacts": [],
+                        "query_entities": entities,
+                        "contact_integration": "no_contacts_in_query",
+                        "execution_time": execution_time
+                    },
+                    confidence=0.70,
+                    reasoning="Calendar events retrieved without contact filtering (no contact names found)"
+                )
+            
+            self.logger.info(f"Found potential contact names: {contact_names}")
+            
+            # Query contacts agent to resolve contact information
+            contact_results = []
+            contact_errors = []
+            
+            if hasattr(self, 'registry_client') and self.registry_client:
+                for name in contact_names:
+                    try:
+                        self.logger.info(f"Resolving contact: '{name}'")
+                        contact_result = await self.query_agent(
+                            "contacts-agent", 
+                            "contacts.resolve", 
+                            {"query": name},
+                            timeout=5.0
+                        )
+                        if contact_result and contact_result.get("contacts"):
+                            contact_results.extend(contact_result["contacts"])
+                            self.logger.info(f"Successfully resolved contact '{name}': {len(contact_result['contacts'])} matches")
+                        else:
+                            self.logger.warning(f"No contacts found for '{name}'")
+                    except Exception as e:
+                        error_msg = f"Failed to resolve contact '{name}': {e}"
+                        self.logger.error(error_msg)
+                        contact_errors.append(error_msg)
+            else:
+                error_msg = "No registry client available for contact resolution"
+                self.logger.error(error_msg)
+                contact_errors.append(error_msg)
+            
+            # Get calendar events for the date range
+            read_params = {"query": query}
+            if date_range:
+                read_params["date_range"] = date_range
+                
+            # If we found contacts, add them as a filter
+            if contact_results:
+                read_params["contact_filter"] = {
+                    "contacts": contact_results,
+                    "query_names": contact_names
+                }
+                self.logger.info(f"Applying contact filter with {len(contact_results)} resolved contacts")
+            
+            calendar_result = await self.read_handler.execute(read_params)
+            execution_time = time.time() - start_time
+            
+            result_confidence = 0.85 if contact_results else 0.60
+            if contact_errors:
+                result_confidence *= 0.8  # Reduce confidence if there were contact resolution errors
+            
+            self.logger.info(f"Contact resolution and calendar filtering completed in {execution_time:.3f}s")
+            
+            return ConfidenceResult(
+                result={
+                    "calendar_events": calendar_result,
+                    "resolved_contacts": contact_results,
+                    "query_entities": entities,
+                    "contact_integration": "enabled" if contact_results else "no_contacts_found",
+                    "contact_errors": contact_errors,
+                    "execution_time": execution_time
+                },
+                confidence=result_confidence,
+                reasoning=f"Calendar events filtered by {len(contact_results)} resolved contacts" if contact_results else "Calendar events without contact filtering"
+            )
+            
+        except ValueError as e:
+            execution_time = time.time() - start_time
+            error_msg = f"Invalid parameters for contact resolution: {str(e)}"
+            self.logger.error(error_msg)
+            return ConfidenceResult(
+                result={
+                    "error": error_msg,
+                    "error_type": "validation_error",
+                    "execution_time": execution_time
+                },
+                confidence=0.0,
+                reasoning=f"Parameter validation failed: {str(e)}"
+            )
+        except TimeoutError as e:
+            execution_time = time.time() - start_time
+            error_msg = f"Timeout during contact resolution: {str(e)}"
+            self.logger.error(error_msg)
+            return ConfidenceResult(
+                result={
+                    "error": error_msg,
+                    "error_type": "timeout_error",
+                    "execution_time": execution_time,
+                    "fallback_suggestion": "Try calendar query without contact filtering"
+                },
+                confidence=0.0,
+                reasoning=f"Contact resolution timed out: {str(e)}"
+            )
+        except Exception as e:
+            execution_time = time.time() - start_time
+            error_msg = f"Contact resolution and event filtering failed: {str(e)}"
+            self.logger.error(error_msg, exc_info=True)
+            return ConfidenceResult(
+                result={
+                    "error": error_msg,
+                    "error_type": "unexpected_error",
+                    "execution_time": execution_time,
+                    "fallback_suggestion": "Consider querying calendar without contact filtering"
+                },
+                confidence=0.0,
+                reasoning=f"Error in contact integration: {str(e)}"
+            )
     
     def get_agent_context(self) -> str:
         """Get agent context for LLM processing."""
