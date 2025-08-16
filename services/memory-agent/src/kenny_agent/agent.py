@@ -86,7 +86,7 @@ class MemoryAgent(BaseAgent):
                 manifest = self.generate_manifest()
                 registration_data = {
                     "manifest": manifest,
-                    "health_endpoint": "http://localhost:8004/health"
+                    "health_endpoint": "http://localhost:8004"
                 }
                 await registry_client.register_agent(registration_data)
                 self.logger.info("Successfully registered with agent registry")

@@ -183,7 +183,9 @@ class TaskPlanner:
                 r'(?:exactly|show|get|find)\s+(\d+)\s*(?:most\s+)?(?:recent|latest|last)',
                 r'(\d+)\s*(?:recent|latest|last)',
                 r'(?:top|first)\s+(\d+)',
-                r'(\d+)\s*(?:most\s+)?(?:recent|latest|last)'
+                r'(\d+)\s*(?:most\s+)?(?:recent|latest|last)',
+                r'(?:most\s+)?(?:recent|latest|last)\s+(\d+)',  # "most recent 3"
+                r'(?:pull|get|fetch)\s+(?:me\s+)?(?:most\s+)?(?:recent|latest|last)\s+(\d+)'  # "pull me most recent 3"
             ]
             
             limit_found = False

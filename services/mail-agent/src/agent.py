@@ -147,7 +147,7 @@ class MailAgent(BaseAgent):
             manifest = self.generate_manifest()
             registration_data = {
                 "manifest": manifest,
-                "health_endpoint": "http://localhost:8000/health"
+                "health_endpoint": "http://localhost:8000"
             }
             await self.registry_client.register_agent(registration_data)
             print(f"[mail-agent] Successfully registered with registry")

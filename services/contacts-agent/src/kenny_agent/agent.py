@@ -88,7 +88,7 @@ class ContactsAgent(BaseAgent):
                 manifest = self.generate_manifest()
                 registration_data = {
                     "manifest": manifest,
-                    "health_endpoint": "http://localhost:8003/health"
+                    "health_endpoint": "http://localhost:8003"
                 }
                 await self.registry_client.register_agent(registration_data)
                 print(f"[contacts-agent] Successfully registered with registry")
