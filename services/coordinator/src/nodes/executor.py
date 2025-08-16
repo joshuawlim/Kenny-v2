@@ -6,12 +6,17 @@ from typing import Dict, Any, List, Optional
 logger = logging.getLogger(__name__)
 
 class AgentExecutor:
-    """Execute capabilities on live agents"""
+    """Execute capabilities on live agents with parallel processing optimizations"""
     
     def __init__(self, registry_url: str = "http://localhost:8001"):
         self.registry_url = registry_url
         self.agent_urls = {}
-        self.http_client = httpx.AsyncClient(timeout=90.0)
+        # Enhanced HTTP client with connection pooling for parallel operations
+        self.http_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(90.0, connect=10.0, read=60.0),
+            limits=httpx.Limits(max_keepalive_connections=20, max_connections=50),
+            http2=True  # Enable HTTP/2 for better multiplexing
+        )
     
     async def load_agent_urls(self):
         """Load agent URLs from registry"""
@@ -40,7 +45,9 @@ class AgentExecutor:
             }
     
     async def execute_capability(self, agent_id: str, capability: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute a capability on a specific agent"""
+        """Execute a capability on a specific agent with performance monitoring"""
+        start_time = asyncio.get_event_loop().time()
+        
         if agent_id not in self.agent_urls:
             await self.load_agent_urls()
         
@@ -50,7 +57,8 @@ class AgentExecutor:
                 "status": "error",
                 "error": f"Agent {agent_id} not available",
                 "agent_id": agent_id,
-                "capability": capability
+                "capability": capability,
+                "execution_time": round(asyncio.get_event_loop().time() - start_time, 3)
             }
         
         agent_url = self.agent_urls[agent_id]
@@ -58,22 +66,29 @@ class AgentExecutor:
         
         try:
             logger.info(f"Executing {capability} on {agent_id} at {endpoint}")
-            logger.info(f"Sending parameters: {parameters}")
+            logger.debug(f"Sending parameters: {parameters}")
             
+            # Enhanced request with better connection reuse
             response = await self.http_client.post(
                 endpoint,
                 json={"input": parameters},
-                headers={"Content-Type": "application/json"}
+                headers={
+                    "Content-Type": "application/json",
+                    "Connection": "keep-alive"
+                }
             )
+            
+            execution_time = asyncio.get_event_loop().time() - start_time
             
             if response.status_code == 200:
                 result = response.json()
-                logger.info(f"Successfully executed {capability} on {agent_id}")
+                logger.info(f"Successfully executed {capability} on {agent_id} in {execution_time:.3f}s")
                 return {
                     "status": "success",
                     "agent_id": agent_id,
                     "capability": capability,
-                    "result": result
+                    "result": result,
+                    "execution_time": round(execution_time, 3)
                 }
             else:
                 logger.error(f"Agent {agent_id} returned {response.status_code}: {response.text}")
@@ -81,39 +96,93 @@ class AgentExecutor:
                     "status": "error",
                     "error": f"HTTP {response.status_code}: {response.text}",
                     "agent_id": agent_id,
-                    "capability": capability
+                    "capability": capability,
+                    "execution_time": round(execution_time, 3)
                 }
                 
+        except asyncio.TimeoutError as e:
+            execution_time = asyncio.get_event_loop().time() - start_time
+            logger.error(f"Timeout executing {capability} on {agent_id} after {execution_time:.3f}s")
+            return {
+                "status": "error",
+                "error": f"Request timed out after {execution_time:.3f}s",
+                "agent_id": agent_id,
+                "capability": capability,
+                "execution_time": round(execution_time, 3)
+            }
         except Exception as e:
+            execution_time = asyncio.get_event_loop().time() - start_time
             import traceback
             error_details = f"{type(e).__name__}: {str(e)}"
             traceback_info = traceback.format_exc()
-            logger.error(f"Failed to execute {capability} on {agent_id}: {error_details}")
-            logger.error(f"Full traceback: {traceback_info}")
+            logger.error(f"Failed to execute {capability} on {agent_id} after {execution_time:.3f}s: {error_details}")
+            logger.debug(f"Full traceback: {traceback_info}")
             return {
                 "status": "error",
                 "error": error_details if str(e) else f"{type(e).__name__} with no message",
                 "agent_id": agent_id,
-                "capability": capability
+                "capability": capability,
+                "execution_time": round(execution_time, 3)
             }
     
     async def execute_parallel(self, tasks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Execute multiple capabilities in parallel"""
-        logger.info(f"Executing {len(tasks)} tasks in parallel")
+        """Execute multiple capabilities in parallel with enhanced performance monitoring"""
+        start_time = asyncio.get_event_loop().time()
+        logger.info(f"Executing {len(tasks)} tasks in parallel with optimized connection pooling")
         
-        async def execute_task(task):
+        async def execute_task_with_timing(task):
+            task_start = asyncio.get_event_loop().time()
             agent_id = task.get('agent_id')
             capability = task.get('capability')
             parameters = task.get('parameters', {})
             step_id = task.get('step_id')
             
             result = await self.execute_capability(agent_id, capability, parameters)
+            task_time = asyncio.get_event_loop().time() - task_start
+            
             result['step_id'] = step_id
+            result['task_execution_time'] = round(task_time, 3)
             return result
         
-        # Execute all tasks concurrently
-        results = await asyncio.gather(*[execute_task(task) for task in tasks])
-        return results
+        # Execute all tasks concurrently with timeout management
+        try:
+            results = await asyncio.gather(
+                *[execute_task_with_timing(task) for task in tasks],
+                return_exceptions=True
+            )
+            
+            # Process results and handle exceptions
+            processed_results = []
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    error_result = {
+                        "status": "error",
+                        "error": f"Parallel execution failed: {str(result)}",
+                        "agent_id": tasks[i].get('agent_id'),
+                        "capability": tasks[i].get('capability'),
+                        "step_id": tasks[i].get('step_id'),
+                        "task_execution_time": 0
+                    }
+                    processed_results.append(error_result)
+                else:
+                    processed_results.append(result)
+            
+            total_time = asyncio.get_event_loop().time() - start_time
+            logger.info(f"Parallel execution of {len(tasks)} tasks completed in {total_time:.3f}s")
+            
+            return processed_results
+            
+        except Exception as e:
+            logger.error(f"Critical error in parallel execution: {e}")
+            # Return error results for all tasks
+            return [{
+                "status": "error",
+                "error": f"Parallel execution critical failure: {str(e)}",
+                "agent_id": task.get('agent_id'),
+                "capability": task.get('capability'),
+                "step_id": task.get('step_id'),
+                "task_execution_time": 0
+            } for task in tasks]
     
     async def execute_sequential(self, tasks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Execute capabilities sequentially, passing results between steps"""
@@ -248,22 +317,49 @@ class ExecutorNode:
         return results
     
     async def _execute_multi_agent_plan(self, plan: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Execute multi-agent plan with parallel execution"""
+        """Execute multi-agent plan with enhanced parallel execution for calendar operations"""
+        start_time = asyncio.get_event_loop().time()
+        
         # Separate parallel tasks from aggregation tasks
         parallel_tasks = [step for step in plan if step.get('parallel', False)]
         sequential_tasks = [step for step in plan if not step.get('parallel', False)]
         
+        # For calendar operations, automatically parallelize independent tasks
+        if not parallel_tasks and len(plan) > 1:
+            # Check if tasks can be parallelized (no dependencies)
+            independent_tasks = []
+            dependent_tasks = []
+            
+            for step in plan:
+                dependencies = step.get('dependencies', [])
+                if not dependencies:
+                    independent_tasks.append(step)
+                    # Mark as parallel for execution
+                    step['parallel'] = True
+                else:
+                    dependent_tasks.append(step)
+            
+            if len(independent_tasks) > 1:
+                logger.info(f"Auto-parallelizing {len(independent_tasks)} independent calendar tasks")
+                parallel_tasks = independent_tasks
+                sequential_tasks = dependent_tasks
+        
         results = []
         
-        # Execute parallel tasks
+        # Execute parallel tasks with enhanced performance
         if parallel_tasks:
+            logger.info(f"Executing {len(parallel_tasks)} tasks in parallel")
             parallel_results = await self.executor.execute_parallel(parallel_tasks)
             results.extend(parallel_results)
         
         # Execute remaining tasks sequentially (like aggregation)
         if sequential_tasks:
+            logger.info(f"Executing {len(sequential_tasks)} tasks sequentially")
             sequential_results = await self.executor.execute_sequential(sequential_tasks)
             results.extend(sequential_results)
+        
+        total_time = asyncio.get_event_loop().time() - start_time
+        logger.info(f"Multi-agent plan execution completed in {total_time:.3f}s")
         
         return results
     

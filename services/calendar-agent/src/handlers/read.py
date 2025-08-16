@@ -8,6 +8,7 @@ with date filtering and calendar selection.
 from typing import Dict, Any, List, Optional
 from kenny_agent.base_handler import BaseCapabilityHandler
 from datetime import datetime, timezone, timedelta
+import asyncio
 import re
 
 
@@ -176,7 +177,7 @@ class ReadCapabilityHandler(BaseCapabilityHandler):
 
     async def execute(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Execute the read capability using the Calendar bridge tool.
+        Execute the read capability using the Calendar bridge tool with parallel processing.
         
         Args:
             parameters: Read parameters
@@ -184,6 +185,8 @@ class ReadCapabilityHandler(BaseCapabilityHandler):
         Returns:
             Calendar events from the Calendar bridge
         """
+        start_time = asyncio.get_event_loop().time()
+        
         try:
             # Get the Calendar bridge tool from the agent
             if not hasattr(self, '_agent') or self._agent is None:
@@ -195,20 +198,23 @@ class ReadCapabilityHandler(BaseCapabilityHandler):
                 # Fallback to mock data if Calendar bridge tool not available
                 return self._get_mock_events(parameters)
             
-            # Handle single event read by ID
+            # Handle single event read by ID (async)
             event_id = parameters.get("event_id")
             if event_id:
-                bridge_result = calendar_bridge_tool.execute({
+                bridge_result = await calendar_bridge_tool.execute_async({
                     "operation": "get_event",
                     "event_id": event_id
                 })
+                
+                execution_time = asyncio.get_event_loop().time() - start_time
                 
                 if bridge_result.get("event") and not bridge_result.get("error"):
                     event = bridge_result["event"]
                     return {
                         "events": [event],
                         "count": 1,
-                        "date_range": None
+                        "date_range": None,
+                        "execution_time": round(execution_time, 3)
                     }
                 else:
                     # Return empty result if event not found
@@ -216,7 +222,8 @@ class ReadCapabilityHandler(BaseCapabilityHandler):
                         "events": [],
                         "count": 0,
                         "date_range": None,
-                        "error": bridge_result.get("error", "Event not found")
+                        "error": bridge_result.get("error", "Event not found"),
+                        "execution_time": round(execution_time, 3)
                     }
             
             # Handle date range query - try to infer from query if not provided
@@ -231,14 +238,78 @@ class ReadCapabilityHandler(BaseCapabilityHandler):
                     print(f"[calendar_read] Inferred date range from query '{query}': {date_range}")
             
             if date_range:
-                # Execute Calendar bridge tool with list_events operation
-                bridge_result = calendar_bridge_tool.execute({
-                    "operation": "list_events",
-                    "calendar_name": parameters.get("calendar_name"),
-                    "start_date": date_range.get("start"),
-                    "end_date": date_range.get("end"),
-                    "limit": parameters.get("limit", 50)
-                })
+                # Prepare parallel operations for performance optimization
+                operations = []
+                
+                # Check if we should parallelize calendar queries
+                calendar_name = parameters.get("calendar_name")
+                
+                if calendar_name:
+                    # Single calendar query
+                    operations.append({
+                        "operation": "list_events",
+                        "calendar_name": calendar_name,
+                        "start_date": date_range.get("start"),
+                        "end_date": date_range.get("end"),
+                        "limit": parameters.get("limit", 50)
+                    })
+                else:
+                    # Get list of calendars first to parallelize queries
+                    calendar_list_result = await calendar_bridge_tool.execute_async({
+                        "operation": "list_calendars"
+                    })
+                    
+                    if calendar_list_result.get("calendars"):
+                        # Create parallel queries for each calendar (up to 5 for performance)
+                        calendars = calendar_list_result["calendars"][:5]  # Limit to prevent overwhelming
+                        for cal in calendars:
+                            cal_name = cal.get("name") or cal.get("title")
+                            if cal_name:
+                                operations.append({
+                                    "operation": "list_events",
+                                    "calendar_name": cal_name,
+                                    "start_date": date_range.get("start"),
+                                    "end_date": date_range.get("end"),
+                                    "limit": parameters.get("limit", 50) // len(calendars)  # Distribute limit
+                                })
+                    
+                    # Fallback to single query if no calendars found
+                    if not operations:
+                        operations.append({
+                            "operation": "list_events",
+                            "start_date": date_range.get("start"),
+                            "end_date": date_range.get("end"),
+                            "limit": parameters.get("limit", 50)
+                        })
+                
+                # Execute operations in parallel if multiple, otherwise single async call
+                if len(operations) > 1:
+                    bridge_results = await calendar_bridge_tool.execute_parallel(operations)
+                    # Merge results from multiple calendars
+                    merged_events = []
+                    total_request_time = 0
+                    
+                    for result in bridge_results:
+                        if isinstance(result, dict) and result.get("events"):
+                            merged_events.extend(result["events"])
+                            total_request_time += result.get("request_time", 0)
+                    
+                    # Sort merged events by start time
+                    merged_events.sort(key=lambda x: x.get("start", ""))
+                    
+                    bridge_result = {
+                        "operation": "list_events_parallel",
+                        "events": merged_events,
+                        "count": len(merged_events),
+                        "date_range": date_range,
+                        "request_time": total_request_time,
+                        "parallel_operations": len(operations)
+                    }
+                else:
+                    # Single operation
+                    bridge_result = await calendar_bridge_tool.execute_async(operations[0])
+                
+                execution_time = asyncio.get_event_loop().time() - start_time
                 
                 # Convert bridge response to capability format
                 if isinstance(bridge_result, dict) and bridge_result.get("events"):
@@ -248,10 +319,11 @@ class ReadCapabilityHandler(BaseCapabilityHandler):
                     if not parameters.get("include_all_day", True):
                         events = [e for e in events if not e.get("all_day", False)]
                     
-                    # Filter by contact if contact_filter is provided
+                    # Filter by contact if contact_filter is provided - run async for performance
                     contact_filter = parameters.get("contact_filter")
                     if contact_filter:
-                        events = self._filter_events_by_contact(events, contact_filter)
+                        # Run contact filtering in parallel if needed
+                        events = await self._filter_events_by_contact_async(events, contact_filter)
                         print(f"[calendar_read] Filtered {len(bridge_result['events'])} events to {len(events)} events by contact filter")
                     
                     return {
@@ -259,29 +331,40 @@ class ReadCapabilityHandler(BaseCapabilityHandler):
                         "count": len(events),
                         "date_range": bridge_result.get("date_range", date_range),
                         "inferred_from_query": query if not parameters.get("date_range") else None,
-                        "contact_filtered": bool(contact_filter)
+                        "contact_filtered": bool(contact_filter),
+                        "execution_time": round(execution_time, 3),
+                        "bridge_request_time": bridge_result.get("request_time", 0),
+                        "parallel_operations": bridge_result.get("parallel_operations", 1)
                     }
                 else:
                     # Return error details from bridge
+                    execution_time = asyncio.get_event_loop().time() - start_time
                     return {
                         "events": [],
                         "count": 0,
                         "date_range": date_range,
-                        "error": bridge_result.get("error", "Failed to retrieve events from calendar bridge")
+                        "error": bridge_result.get("error", "Failed to retrieve events from calendar bridge"),
+                        "execution_time": round(execution_time, 3)
                     }
             
             # If neither event_id nor date_range could be determined, return error
+            execution_time = asyncio.get_event_loop().time() - start_time
             return {
                 "events": [],
                 "count": 0,
                 "date_range": None,
-                "error": "Either event_id or date_range is required. For natural language queries, include time references like 'upcoming', 'today', 'this week', etc."
+                "error": "Either event_id or date_range is required. For natural language queries, include time references like 'upcoming', 'today', 'this week', etc.",
+                "execution_time": round(execution_time, 3)
             }
                 
         except Exception as e:
             # Fallback to mock data on any error
+            execution_time = asyncio.get_event_loop().time() - start_time
             print(f"Calendar read error: {e}")
-            return self._get_mock_events(parameters)
+            result = self._get_mock_events(parameters)
+            result["execution_time"] = round(execution_time, 3)
+            result["fallback_reason"] = str(e)
+            return result
     
     def _get_mock_events(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -364,9 +447,30 @@ class ReadCapabilityHandler(BaseCapabilityHandler):
             "date_range": date_range
         }
     
+    async def _filter_events_by_contact_async(self, events: List[Dict[str, Any]], contact_info: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Filter events by contact information asynchronously for better performance.
+        
+        Args:
+            events: List of calendar events
+            contact_info: Contact information from contacts agent
+            
+        Returns:
+            Filtered list of events containing the contact
+        """
+        if not contact_info or not events:
+            return events
+        
+        # Use thread pool for CPU-intensive filtering if we have many events
+        if len(events) > 100:
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, self._filter_events_by_contact, events, contact_info)
+        else:
+            return self._filter_events_by_contact(events, contact_info)
+    
     def _filter_events_by_contact(self, events: List[Dict[str, Any]], contact_info: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
-        Filter events by contact information.
+        Filter events by contact information (sync version for backwards compatibility).
         
         Args:
             events: List of calendar events

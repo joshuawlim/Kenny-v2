@@ -23,11 +23,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent.parent / "agen
 
 from kenny_agent.agent_service_base import AgentServiceBase, ConfidenceResult
 from kenny_agent.registry import AgentRegistryClient
+from kenny_agent.cache_warming_service import CacheWarmingService
+from kenny_agent.intelligent_cache_orchestrator import IntelligentCacheOrchestrator
 
 from handlers.read import ReadCapabilityHandler
 from handlers.propose_event import ProposeEventCapabilityHandler
 from handlers.write_event import WriteEventCapabilityHandler
 from tools.calendar_bridge import CalendarBridgeTool
+from performance_monitor import get_performance_monitor, log_calendar_operation
 
 
 class IntelligentCalendarAgent(AgentServiceBase):
@@ -57,6 +60,18 @@ class IntelligentCalendarAgent(AgentServiceBase):
         # Setup logging
         self.logger = logging.getLogger("intelligent-calendar-agent")
         self.logger.setLevel(logging.INFO)
+        
+        # Initialize performance monitoring for Phase 3.2.1
+        self.performance_monitor = get_performance_monitor()
+        self.logger.info("Performance monitoring enabled for parallel processing optimizations")
+        
+        # Initialize Phase 3.2.2 Multi-Tier Caching
+        self.cache_warming_service = CacheWarmingService(self, warming_interval=3600)  # 1 hour
+        self.logger.info("Phase 3.2.2 Multi-Tier Caching initialized with Redis L2 layer")
+        
+        # Initialize Phase 3.2.3 Predictive Cache Warming
+        self.cache_orchestrator = IntelligentCacheOrchestrator(self)
+        self.logger.info("Phase 3.2.3 Predictive Cache Warming initialized with ML intelligence")
         
         self.logger.info(f"Initialized Intelligent Calendar Agent with LLM model: {llm_model}")
         print(f"Initialized Intelligent Calendar Agent with LLM model: {llm_model}")
@@ -121,7 +136,11 @@ class IntelligentCalendarAgent(AgentServiceBase):
             "calendar.meeting_prep",
             "calendar.availability_optimize",
             "calendar.context_analyze",
-            "calendar.read_with_contacts"
+            "calendar.read_with_contacts",
+            "calendar.cache_stats",
+            "calendar.cache_warm",
+            "calendar.predictive_insights",
+            "calendar.orchestration_status"
         ]
         
         for capability in enhanced_capabilities:
@@ -156,11 +175,16 @@ class IntelligentCalendarAgent(AgentServiceBase):
         print(f"Registered cross-platform dependencies: {list(self.agent_dependencies.keys())}")
     
     async def _handle_enhanced_capability(self, capability: str, params: Dict[str, Any]) -> ConfidenceResult:
-        """Handle enhanced LLM-powered capabilities with comprehensive error handling."""
-        start_time = time.time()
-        
-        try:
-            self.logger.info(f"Executing enhanced capability: {capability} with params: {list(params.keys())}")
+        """Handle enhanced LLM-powered capabilities with comprehensive error handling and performance monitoring."""
+        async with self.performance_monitor.monitor_operation(
+            operation_name=f"enhanced_capability_{capability}",
+            capability=capability,
+            param_count=len(params)
+        ) as metrics:
+            start_time = time.time()
+            
+            try:
+                self.logger.info(f"Executing enhanced capability: {capability} with params: {list(params.keys())}")
             
             if capability == "calendar.smart_schedule":
                 result = await self._smart_schedule_with_llm(params)
@@ -176,6 +200,14 @@ class IntelligentCalendarAgent(AgentServiceBase):
                 query = params.get("query", "")
                 date_range = params.get("date_range")
                 result = await self._resolve_contacts_and_filter_events(query, date_range)
+            elif capability == "calendar.cache_stats":
+                result = await self._get_cache_performance_stats(params)
+            elif capability == "calendar.cache_warm":
+                result = await self._warm_cache_patterns(params)
+            elif capability == "calendar.predictive_insights":
+                result = await self._get_predictive_insights(params)
+            elif capability == "calendar.orchestration_status":
+                result = await self._get_orchestration_status(params)
             else:
                 self.logger.error(f"Unknown enhanced capability requested: {capability}")
                 return ConfidenceResult(
@@ -184,15 +216,22 @@ class IntelligentCalendarAgent(AgentServiceBase):
                     reasoning="Capability not implemented"
                 )
             
-            execution_time = time.time() - start_time
-            self.logger.info(f"Successfully executed {capability} in {execution_time:.3f}s with confidence {result.confidence}")
+                execution_time = time.time() - start_time
+                metrics.success_count += 1
+                metrics.metadata.update({
+                    "confidence": result.confidence,
+                    "result_type": type(result.result).__name__
+                })
+                self.logger.info(f"Successfully executed {capability} in {execution_time:.3f}s with confidence {result.confidence}")
+                
+                return result
             
-            return result
-            
-        except ValueError as e:
-            execution_time = time.time() - start_time
-            self.logger.error(f"ValueError in {capability} after {execution_time:.3f}s: {str(e)}")
-            return ConfidenceResult(
+            except ValueError as e:
+                execution_time = time.time() - start_time
+                metrics.error_count += 1
+                metrics.metadata["error_type"] = "validation_error"
+                self.logger.error(f"ValueError in {capability} after {execution_time:.3f}s: {str(e)}")
+                return ConfidenceResult(
                 result={
                     "error": f"Invalid parameters for {capability}: {str(e)}",
                     "error_type": "validation_error"
@@ -200,10 +239,12 @@ class IntelligentCalendarAgent(AgentServiceBase):
                 confidence=0.0,
                 reasoning=f"Parameter validation failed for {capability}: {str(e)}"
             )
-        except TimeoutError as e:
-            execution_time = time.time() - start_time
-            self.logger.error(f"TimeoutError in {capability} after {execution_time:.3f}s: {str(e)}")
-            return ConfidenceResult(
+            except TimeoutError as e:
+                execution_time = time.time() - start_time
+                metrics.error_count += 1
+                metrics.metadata["error_type"] = "timeout_error"
+                self.logger.error(f"TimeoutError in {capability} after {execution_time:.3f}s: {str(e)}")
+                return ConfidenceResult(
                 result={
                     "error": f"Timeout executing {capability}: {str(e)}",
                     "error_type": "timeout_error",
@@ -212,10 +253,12 @@ class IntelligentCalendarAgent(AgentServiceBase):
                 confidence=0.0,
                 reasoning=f"Capability {capability} timed out after {execution_time:.3f}s"
             )
-        except ConnectionError as e:
-            execution_time = time.time() - start_time
-            self.logger.error(f"ConnectionError in {capability} after {execution_time:.3f}s: {str(e)}")
-            return ConfidenceResult(
+            except ConnectionError as e:
+                execution_time = time.time() - start_time
+                metrics.error_count += 1
+                metrics.metadata["error_type"] = "connection_error"
+                self.logger.error(f"ConnectionError in {capability} after {execution_time:.3f}s: {str(e)}")
+                return ConfidenceResult(
                 result={
                     "error": f"Connection error in {capability}: {str(e)}",
                     "error_type": "connection_error",
@@ -224,10 +267,12 @@ class IntelligentCalendarAgent(AgentServiceBase):
                 confidence=0.0,
                 reasoning=f"Connection failed for {capability}: {str(e)}"
             )
-        except Exception as e:
-            execution_time = time.time() - start_time
-            self.logger.error(f"Unexpected error in {capability} after {execution_time:.3f}s: {str(e)}", exc_info=True)
-            return ConfidenceResult(
+            except Exception as e:
+                execution_time = time.time() - start_time
+                metrics.error_count += 1
+                metrics.metadata["error_type"] = "unexpected_error"
+                self.logger.error(f"Unexpected error in {capability} after {execution_time:.3f}s: {str(e)}", exc_info=True)
+                return ConfidenceResult(
                 result={
                     "error": f"Unexpected error in {capability}: {str(e)}",
                     "error_type": "unexpected_error",
@@ -499,7 +544,12 @@ class IntelligentCalendarAgent(AgentServiceBase):
         Returns:
             ConfidenceResult with filtered calendar events
         """
-        start_time = time.time()
+        async with self.performance_monitor.monitor_operation(
+            operation_name="resolve_contacts_and_filter_events",
+            query_length=len(query),
+            has_date_range=bool(date_range)
+        ) as metrics:
+            start_time = time.time()
         
         try:
             self.logger.info(f"Resolving contacts and filtering events for query: '{query}'")
@@ -532,33 +582,44 @@ class IntelligentCalendarAgent(AgentServiceBase):
             
             self.logger.info(f"Found potential contact names: {contact_names}")
             
-            # Query contacts agent to resolve contact information
+            # Query contacts agent to resolve contact information (parallel for performance)
             contact_results = []
             contact_errors = []
             
             if hasattr(self, 'registry_client') and self.registry_client:
+                # Parallelize contact resolution for better performance
+                contact_tasks = []
+                metrics.concurrent_tasks = len(contact_names)
+                metrics.parallel_operations = len(contact_names) if len(contact_names) > 1 else 1
+                
                 for name in contact_names:
-                    try:
-                        self.logger.info(f"Resolving contact: '{name}'")
-                        contact_result = await self.query_agent(
-                            "contacts-agent", 
-                            "contacts.resolve", 
-                            {"query": name},
-                            timeout=5.0
-                        )
-                        if contact_result and contact_result.get("contacts"):
-                            contact_results.extend(contact_result["contacts"])
-                            self.logger.info(f"Successfully resolved contact '{name}': {len(contact_result['contacts'])} matches")
+                    task = asyncio.create_task(
+                        self._resolve_single_contact(name),
+                        name=f"resolve_contact_{name}"
+                    )
+                    contact_tasks.append(task)
+                
+                # Execute all contact resolutions in parallel
+                if contact_tasks:
+                    contact_task_results = await asyncio.gather(*contact_tasks, return_exceptions=True)
+                    
+                    for i, result in enumerate(contact_task_results):
+                        if isinstance(result, Exception):
+                            error_msg = f"Failed to resolve contact '{contact_names[i]}': {result}"
+                            self.logger.error(error_msg)
+                            contact_errors.append(error_msg)
+                            metrics.error_count += 1
+                        elif result and result.get("contacts"):
+                            contact_results.extend(result["contacts"])
+                            self.logger.info(f"Successfully resolved contact '{contact_names[i]}': {len(result['contacts'])} matches")
+                            metrics.success_count += 1
                         else:
-                            self.logger.warning(f"No contacts found for '{name}'")
-                    except Exception as e:
-                        error_msg = f"Failed to resolve contact '{name}': {e}"
-                        self.logger.error(error_msg)
-                        contact_errors.append(error_msg)
+                            self.logger.warning(f"No contacts found for '{contact_names[i]}'")
             else:
                 error_msg = "No registry client available for contact resolution"
                 self.logger.error(error_msg)
                 contact_errors.append(error_msg)
+                metrics.error_count += 1
             
             # Get calendar events for the date range
             read_params = {"query": query}
@@ -580,6 +641,14 @@ class IntelligentCalendarAgent(AgentServiceBase):
             if contact_errors:
                 result_confidence *= 0.8  # Reduce confidence if there were contact resolution errors
             
+            # Update performance metrics
+            metrics.metadata.update({
+                "contacts_resolved": len(contact_results),
+                "contact_errors": len(contact_errors),
+                "entities_found": len(entities.get("people", [])),
+                "confidence": result_confidence
+            })
+            
             self.logger.info(f"Contact resolution and calendar filtering completed in {execution_time:.3f}s")
             
             return ConfidenceResult(
@@ -589,10 +658,11 @@ class IntelligentCalendarAgent(AgentServiceBase):
                     "query_entities": entities,
                     "contact_integration": "enabled" if contact_results else "no_contacts_found",
                     "contact_errors": contact_errors,
-                    "execution_time": execution_time
+                    "execution_time": execution_time,
+                    "performance_optimized": True
                 },
                 confidence=result_confidence,
-                reasoning=f"Calendar events filtered by {len(contact_results)} resolved contacts" if contact_results else "Calendar events without contact filtering"
+                reasoning=f"Calendar events filtered by {len(contact_results)} resolved contacts with parallel processing" if contact_results else "Calendar events without contact filtering"
             )
             
         except ValueError as e:
@@ -658,10 +728,25 @@ class IntelligentCalendarAgent(AgentServiceBase):
         Always prioritize user productivity and provide actionable scheduling guidance.
         """
     
+    async def _resolve_single_contact(self, name: str) -> Optional[Dict[str, Any]]:
+        """Resolve a single contact asynchronously."""
+        try:
+            self.logger.info(f"Resolving contact: '{name}'")
+            contact_result = await self.query_agent(
+                "contacts-agent", 
+                "contacts.resolve", 
+                {"query": name},
+                timeout=5.0
+            )
+            return contact_result
+        except Exception as e:
+            self.logger.error(f"Failed to resolve contact '{name}': {e}")
+            return None
+    
     def get_multi_platform_context(self) -> str:
         """Get multi-platform integration context."""
         return f"""
-        Cross-platform integrations available:
+        Cross-platform integrations available (with parallel processing):
         
         Contacts Agent: Resolve meeting participants and enrich contact information
         Mail Agent: Analyze email context for meeting preparation and follow-up
@@ -760,12 +845,13 @@ class IntelligentCalendarAgent(AgentServiceBase):
             )
     
     async def start(self):
-        """Start the Intelligent Calendar Agent and register with the registry."""
-        print(f"Starting {self.name}...")
+        """Start the Intelligent Calendar Agent with parallel processing optimizations and register with the registry."""
+        print(f"Starting {self.name} with Phase 3.2.1 parallel processing optimizations...")
         print(f"Agent ID: {self.agent_id}")
         print(f"LLM Model: {self.llm_processor.model_name}")
         print(f"Capabilities: {list(self.capabilities.keys())}")
         print(f"Tools: {list(self.tools.keys())}")
+        print(f"Parallel Processing: Enabled for contact resolution and calendar operations")
         
         # Try to register with agent registry
         try:
@@ -778,10 +864,330 @@ class IntelligentCalendarAgent(AgentServiceBase):
         except Exception as e:
             print(f"Warning: Could not register with agent registry: {e}")
         
-        print(f"{self.name} started successfully!")
+        print(f"{self.name} started successfully with performance optimizations!")
+        
+        # Start cache warming service for Phase 3.2.2
+        try:
+            await self.cache_warming_service.start()
+            self.logger.info("Cache warming service started successfully")
+        except Exception as e:
+            self.logger.error(f"Failed to start cache warming service: {e}")
+        
+        # Start intelligent cache orchestrator for Phase 3.2.3
+        try:
+            await self.cache_orchestrator.start()
+            self.logger.info("Intelligent cache orchestrator started successfully")
+        except Exception as e:
+            self.logger.error(f"Failed to start cache orchestrator: {e}")
+        
+        # Log Phase 3.2.1 & 3.2.2 & 3.2.3 optimizations
+        self.logger.info("Phase 3.2.1 Parallel Processing Optimizations Active:")
+        self.logger.info("- Async calendar bridge with connection pooling")
+        self.logger.info("- Parallel contact resolution")
+        self.logger.info("- Enhanced event fetching with auto-parallelization")
+        self.logger.info("- Comprehensive performance monitoring")
+        
+        self.logger.info("Phase 3.2.2 Multi-Tier Caching Optimizations Active:")
+        self.logger.info("- L1 In-Memory cache (30s TTL, 1000 entries)")
+        self.logger.info("- L2 Redis cache (5min TTL, connection pooling)")
+        self.logger.info("- L3 SQLite cache (1hr TTL, persistent)")
+        self.logger.info("- Background cache warming service")
+        self.logger.info("- Intelligent cache promotion and invalidation")
+        
+        self.logger.info("Phase 3.2.3 Predictive Cache Warming Active:")
+        self.logger.info("- ML-based query pattern prediction")
+        self.logger.info("- Real-time EventKit calendar change monitoring")
+        self.logger.info("- Intelligent cache orchestration and optimization")
+        self.logger.info("- Adaptive learning and prediction accuracy tracking")
+        self.logger.info("- Event-driven cache invalidation and refresh")
     
     async def stop(self):
-        """Stop the Intelligent Calendar Agent."""
+        """Stop the Intelligent Calendar Agent and cleanup resources."""
         print(f"Stopping {self.name}...")
-        # Cleanup any resources if needed
+        
+        # Cleanup calendar bridge async client
+        calendar_bridge_tool = self.tools.get("calendar_bridge")
+        if calendar_bridge_tool and hasattr(calendar_bridge_tool, 'cleanup'):
+            try:
+                await calendar_bridge_tool.cleanup()
+                print("Calendar bridge async client cleaned up successfully")
+            except Exception as e:
+                print(f"Warning: Error cleaning up calendar bridge: {e}")
+        
+        # Stop cache warming service
+        try:
+            await self.cache_warming_service.stop()
+            self.logger.info("Cache warming service stopped successfully")
+        except Exception as e:
+            self.logger.error(f"Error stopping cache warming service: {e}")
+        
+        # Stop intelligent cache orchestrator
+        try:
+            await self.cache_orchestrator.stop()
+            self.logger.info("Intelligent cache orchestrator stopped successfully")
+        except Exception as e:
+            self.logger.error(f"Error stopping cache orchestrator: {e}")
+        
+        # Log final performance summary
+        self.performance_monitor.log_performance_summary()
+        
+        # Log final cache statistics
+        if hasattr(self, 'semantic_cache'):
+            cache_stats = self.semantic_cache.get_cache_stats()
+            self.logger.info("Final cache performance statistics:")
+            self.logger.info(f"- L1 hit rate: {cache_stats['l1_cache']['hit_rate_percent']}%")
+            self.logger.info(f"- L2 hit rate: {cache_stats['l2_cache']['hit_rate_percent']}%") 
+            self.logger.info(f"- L3 hit rate: {cache_stats['l3_cache']['hit_rate_percent']}%")
+            self.logger.info(f"- Overall hit rate: {cache_stats['overall_performance']['total_hit_rate_percent']}%")
+        
+        # Log Phase 3.2.3 final performance
+        try:
+            orchestration_insights = await self.cache_orchestrator.get_orchestration_insights()
+            performance_improvement = orchestration_insights.get("performance_improvement", {})
+            self.logger.info("Phase 3.2.3 Predictive Cache Warming Final Results:")
+            self.logger.info(f"- Overall performance gain: {performance_improvement.get('overall_performance_gain', 0):.1f}%")
+            self.logger.info(f"- Prediction accuracy: {performance_improvement.get('prediction_accuracy', 0):.1%}")
+            self.logger.info(f"- Cache hit rate improvement: {performance_improvement.get('cache_hit_rate_improvement', 0):.1f}%")
+            self.logger.info(f"- Response time improvement: {performance_improvement.get('response_time_improvement', 0):.1f}%")
+        except Exception as e:
+            self.logger.error(f"Error logging Phase 3.2.3 final performance: {e}")
+        
         print(f"{self.name} stopped successfully!")
+    
+    async def process_natural_language_query(self, query: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        Override base method to use orchestrated query processing with Phase 3.2.3 intelligence.
+        """
+        try:
+            # Use orchestrated processing for enhanced performance
+            if hasattr(self, 'cache_orchestrator') and self.cache_orchestrator.is_running:
+                return await self.cache_orchestrator.process_query_with_orchestration(query)
+            else:
+                # Fallback to base method if orchestrator not available
+                return await super().process_natural_language_query(query, context)
+        
+        except Exception as e:
+            self.logger.error(f"Error in orchestrated query processing, falling back to base method: {e}")
+            return await super().process_natural_language_query(query, context)
+    
+    async def _get_cache_performance_stats(self, params: Dict[str, Any]) -> ConfidenceResult:
+        """Get comprehensive cache performance statistics for Phase 3.2.2."""
+        try:
+            # Get cache statistics from semantic cache
+            cache_stats = self.semantic_cache.get_cache_stats()
+            
+            # Get cache warming service statistics
+            warming_stats = self.cache_warming_service.get_warming_stats()
+            
+            # Calculate performance improvements
+            performance_metrics = self.get_performance_metrics()
+            
+            result = {
+                "cache_performance": {
+                    "multi_tier_stats": cache_stats,
+                    "cache_warming_stats": warming_stats,
+                    "agent_performance": performance_metrics,
+                    "phase_3_2_2_status": "Active - Multi-Tier Aggressive Caching"
+                },
+                "performance_summary": {
+                    "l1_hit_rate": cache_stats["l1_cache"]["hit_rate_percent"],
+                    "l2_hit_rate": cache_stats["l2_cache"]["hit_rate_percent"],
+                    "l3_hit_rate": cache_stats["l3_cache"]["hit_rate_percent"],
+                    "overall_hit_rate": cache_stats["overall_performance"]["total_hit_rate_percent"],
+                    "cache_effectiveness": "excellent" if cache_stats["overall_performance"]["total_hit_rate_percent"] > 80 else
+                                        "good" if cache_stats["overall_performance"]["total_hit_rate_percent"] > 60 else
+                                        "needs_improvement"
+                },
+                "optimization_targets": {
+                    "l1_target": ">70%",
+                    "l2_target": ">85%",
+                    "l3_target": ">95%",
+                    "response_time_target": "<2s for cached queries"
+                }
+            }
+            
+            return ConfidenceResult(
+                result=result,
+                confidence=1.0,
+                reasoning="Cache performance statistics retrieved successfully"
+            )
+            
+        except Exception as e:
+            return ConfidenceResult(
+                result={
+                    "error": f"Error retrieving cache stats: {str(e)}",
+                    "fallback_info": "Cache performance monitoring temporarily unavailable"
+                },
+                confidence=0.0,
+                reasoning=f"Cache stats retrieval failed: {str(e)}"
+            )
+    
+    async def _warm_cache_patterns(self, params: Dict[str, Any]) -> ConfidenceResult:
+        """Manually trigger cache warming for specific patterns."""
+        try:
+            patterns = params.get("patterns", [])
+            force_warm = params.get("force", False)
+            
+            if not patterns:
+                # Use default warming patterns
+                patterns = [
+                    "events today",
+                    "meetings today",
+                    "schedule this week",
+                    "upcoming meetings"
+                ]
+            
+            warmed_count = 0
+            errors = []
+            
+            for pattern in patterns:
+                try:
+                    if force_warm:
+                        await self.cache_warming_service.force_warm_pattern(pattern)
+                    else:
+                        # Use regular warming
+                        await self.process_natural_language_query(pattern)
+                    
+                    warmed_count += 1
+                    self.logger.info(f"Warmed cache for pattern: {pattern}")
+                    
+                except Exception as e:
+                    error_msg = f"Failed to warm pattern '{pattern}': {str(e)}"
+                    errors.append(error_msg)
+                    self.logger.error(error_msg)
+            
+            result = {
+                "cache_warming_result": {
+                    "patterns_requested": len(patterns),
+                    "patterns_warmed": warmed_count,
+                    "success_rate": (warmed_count / len(patterns)) * 100,
+                    "errors": errors,
+                    "warming_service_stats": self.cache_warming_service.get_warming_stats()
+                }
+            }
+            
+            confidence = 0.9 if warmed_count == len(patterns) else 0.7 if warmed_count > 0 else 0.3
+            
+            return ConfidenceResult(
+                result=result,
+                confidence=confidence,
+                reasoning=f"Cache warming completed: {warmed_count}/{len(patterns)} patterns warmed"
+            )
+            
+        except Exception as e:
+            return ConfidenceResult(
+                result={
+                    "error": f"Cache warming failed: {str(e)}",
+                    "fallback_suggestion": "Try warming individual patterns manually"
+                },
+                confidence=0.0,
+                reasoning=f"Cache warming error: {str(e)}"
+            )
+    
+    async def _get_predictive_insights(self, params: Dict[str, Any]) -> ConfidenceResult:
+        """Get predictive cache warming insights and recommendations."""
+        try:
+            # Get comprehensive orchestration insights
+            insights = await self.cache_orchestrator.get_orchestration_insights()
+            
+            # Get pattern analysis statistics
+            pattern_stats = self.cache_orchestrator.pattern_analyzer.get_analysis_stats()
+            
+            # Generate current predictions
+            current_time = datetime.now()
+            predictions = await self.cache_orchestrator.pattern_analyzer.predict_likely_queries(current_time)
+            
+            result = {
+                "predictive_insights": {
+                    "phase_3_2_3_status": "Active - ML-Based Predictive Cache Warming",
+                    "orchestration_insights": insights,
+                    "pattern_analysis": pattern_stats,
+                    "current_predictions": [
+                        {
+                            "query": pred.query,
+                            "probability": pred.probability,
+                            "confidence": pred.confidence,
+                            "reasoning": pred.reasoning,
+                            "query_type": pred.query_type
+                        } for pred in predictions[:10]  # Top 10 predictions
+                    ],
+                    "performance_targets": {
+                        "target_improvement": "70-80% total improvement (41s → 8-12s)",
+                        "prediction_accuracy_target": ">80%",
+                        "cache_efficiency_target": ">90% hit rate",
+                        "real_time_response_target": "<1s invalidation"
+                    }
+                }
+            }
+            
+            return ConfidenceResult(
+                result=result,
+                confidence=1.0,
+                reasoning="Phase 3.2.3 predictive insights retrieved successfully"
+            )
+            
+        except Exception as e:
+            return ConfidenceResult(
+                result={
+                    "error": f"Error retrieving predictive insights: {str(e)}",
+                    "fallback_info": "Predictive analytics temporarily unavailable"
+                },
+                confidence=0.0,
+                reasoning=f"Predictive insights retrieval failed: {str(e)}"
+            )
+    
+    async def _get_orchestration_status(self, params: Dict[str, Any]) -> ConfidenceResult:
+        """Get comprehensive cache orchestration status."""
+        try:
+            # Get orchestration status
+            orchestration_insights = await self.cache_orchestrator.get_orchestration_insights()
+            
+            # Get component statuses
+            pattern_analyzer_running = hasattr(self.cache_orchestrator, 'pattern_analyzer')
+            event_monitor_running = self.cache_orchestrator.event_monitor.monitoring_enabled
+            predictive_warmer_running = self.cache_orchestrator.predictive_warmer.is_running
+            
+            # Calculate overall system health
+            components_healthy = sum([
+                pattern_analyzer_running,
+                event_monitor_running, 
+                predictive_warmer_running,
+                self.cache_orchestrator.is_running
+            ])
+            
+            system_health = "excellent" if components_healthy == 4 else \
+                           "good" if components_healthy >= 3 else \
+                           "degraded" if components_healthy >= 2 else "critical"
+            
+            result = {
+                "orchestration_status": {
+                    "system_health": system_health,
+                    "components_status": {
+                        "cache_orchestrator": self.cache_orchestrator.is_running,
+                        "pattern_analyzer": pattern_analyzer_running,
+                        "event_monitor": event_monitor_running,
+                        "predictive_warmer": predictive_warmer_running
+                    },
+                    "performance_summary": orchestration_insights.get("performance_improvement", {}),
+                    "optimization_strategy": self.cache_orchestrator.current_strategy.value,
+                    "prediction_accuracy": orchestration_insights.get("performance_improvement", {}).get("prediction_accuracy", 0.0),
+                    "cache_hit_improvement": orchestration_insights.get("performance_improvement", {}).get("cache_hit_rate_improvement", 0.0),
+                    "response_time_improvement": orchestration_insights.get("performance_improvement", {}).get("response_time_improvement", 0.0)
+                }
+            }
+            
+            return ConfidenceResult(
+                result=result,
+                confidence=1.0,
+                reasoning="Cache orchestration status retrieved successfully"
+            )
+            
+        except Exception as e:
+            return ConfidenceResult(
+                result={
+                    "error": f"Error retrieving orchestration status: {str(e)}",
+                    "fallback_info": "Orchestration status temporarily unavailable"
+                },
+                confidence=0.0,
+                reasoning=f"Orchestration status retrieval failed: {str(e)}"
+            )

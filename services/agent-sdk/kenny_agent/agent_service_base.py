@@ -31,6 +31,14 @@ except ImportError:
     AIOHTTP_AVAILABLE = False
     aiohttp = None
 
+# Optional Redis import for enhanced L2 caching
+try:
+    import redis.asyncio as redis
+    REDIS_AVAILABLE = True
+except ImportError:
+    REDIS_AVAILABLE = False
+    redis = None
+
 
 @dataclass
 class ConfidenceResult:
@@ -53,20 +61,37 @@ class AgentDependency:
 
 
 class SemanticCache:
-    """Multi-tier semantic caching for agent responses with enhanced L1 performance."""
+    """Enhanced multi-tier semantic caching for agent responses with Redis L2 layer."""
     
-    def __init__(self, cache_dir: str = "/tmp/kenny_cache"):
-        """Initialize semantic cache with enhanced L1 (memory), L2 (ChromaDB), L3 (SQLite)."""
+    def __init__(self, cache_dir: str = "/tmp/kenny_cache", redis_url: str = "redis://localhost:6379"):
+        """Initialize enhanced semantic cache with L1 (memory), L2 (Redis), L3 (SQLite)."""
         self.cache_dir = cache_dir
+        self.redis_url = redis_url
+        
         # Enhanced L1 cache: query_hash -> (result, timestamp, access_count, last_access)
         self.l1_cache: Dict[str, Tuple[Any, float, int, float]] = {}
-        self.l1_ttl = 900  # Extended to 15 minutes for better hit rates
-        self.l1_max_size = 500  # Increased cache size for better performance
+        self.l1_ttl = 30  # Reduced to 30 seconds for aggressive freshness
+        self.l1_max_size = 1000  # Increased to 1000 entries for better performance
         self.l1_access_weight = 0.3  # Weight for frequency in LFU-LRU hybrid
+        
+        # L2 Redis cache connection
+        self.redis_client = None
+        self.l2_ttl = 300  # 5 minutes for Redis cache
+        self.redis_connection_pool = None
         
         # L3 SQLite cache for structured data
         self.db_path = f"{cache_dir}/agent_cache.db"
         self._init_sqlite_cache()
+        
+        # Cache performance metrics
+        self.cache_metrics = {
+            "l1_hits": 0,
+            "l2_hits": 0, 
+            "l3_hits": 0,
+            "cache_misses": 0,
+            "total_queries": 0,
+            "l2_connection_errors": 0
+        }
     
     def _init_sqlite_cache(self):
         """Initialize SQLite cache database."""
@@ -115,25 +140,78 @@ class SemanticCache:
         conn.commit()
         conn.close()
     
+    async def _init_redis_connection(self):
+        """Initialize Redis connection with connection pooling."""
+        if not REDIS_AVAILABLE:
+            print("Warning: Redis not available, L2 cache disabled")
+            return
+        
+        try:
+            # Create connection pool for better performance
+            self.redis_connection_pool = redis.ConnectionPool.from_url(
+                self.redis_url,
+                max_connections=20,
+                retry_on_timeout=True,
+                socket_keepalive=True,
+                socket_keepalive_options={},
+                decode_responses=True
+            )
+            self.redis_client = redis.Redis(connection_pool=self.redis_connection_pool)
+            
+            # Test connection
+            await self.redis_client.ping()
+            print(f"Redis L2 cache connected: {self.redis_url}")
+            
+        except Exception as e:
+            print(f"Warning: Redis L2 cache unavailable: {e}")
+            self.redis_client = None
+            self.cache_metrics["l2_connection_errors"] += 1
+    
+    async def _ensure_redis_connection(self):
+        """Ensure Redis connection is available."""
+        if REDIS_AVAILABLE and self.redis_client is None:
+            await self._init_redis_connection()
+    
     def _hash_query(self, query: str, agent_id: str) -> str:
         """Generate consistent hash for query."""
         content = f"{agent_id}:{query.lower().strip()}"
         return hashlib.sha256(content.encode()).hexdigest()[:16]
     
     async def get(self, query: str, agent_id: str) -> Optional[Tuple[Any, float]]:
-        """Retrieve cached result with confidence score."""
+        """Retrieve cached result with confidence score using L1 -> L2 -> L3 hierarchy."""
         query_hash = self._hash_query(query, agent_id)
         current_time = time.time()
+        self.cache_metrics["total_queries"] += 1
         
-        # Enhanced L1 Cache check with access tracking
+        # L1 Cache check with access tracking (30-second TTL)
         if query_hash in self.l1_cache:
             result, timestamp, access_count, last_access = self.l1_cache[query_hash]
             if current_time - timestamp < self.l1_ttl:
                 # Update access statistics for LFU-LRU hybrid
                 self.l1_cache[query_hash] = (result, timestamp, access_count + 1, current_time)
+                self.cache_metrics["l1_hits"] += 1
                 return result, 1.0  # Perfect match confidence
         
-        # L3 SQLite cache check
+        # L2 Redis Cache check (5-minute TTL)
+        await self._ensure_redis_connection()
+        if self.redis_client:
+            try:
+                redis_key = f"kenny:cache:{agent_id}:{query_hash}"
+                cached_data = await self.redis_client.get(redis_key)
+                if cached_data:
+                    cache_entry = json.loads(cached_data)
+                    result = cache_entry["result"]
+                    confidence = cache_entry["confidence"]
+                    
+                    # Promote to L1 cache
+                    self.l1_cache[query_hash] = (result, current_time, 1, current_time)
+                    self.cache_metrics["l2_hits"] += 1
+                    return result, confidence
+            except Exception as e:
+                print(f"Redis L2 cache error: {e}")
+                self.cache_metrics["l2_connection_errors"] += 1
+        
+        # L3 SQLite cache check (1-hour TTL)
         conn = sqlite3.connect(self.db_path)
         cursor = conn.execute(
             "SELECT result_data, confidence FROM query_cache WHERE query_hash = ? AND timestamp > ?",
@@ -146,16 +224,44 @@ class SemanticCache:
             try:
                 result = json.loads(row[0])
                 confidence = row[1]
-                # Promote to L1 cache with initial access count
-                self.l1_cache[query_hash] = (result, current_time, 1, current_time)
+                
+                # Promote to L2 and L1 caches
+                await self._promote_to_upper_caches(query_hash, agent_id, result, confidence, current_time)
+                self.cache_metrics["l3_hits"] += 1
                 return result, confidence
             except json.JSONDecodeError:
                 pass
         
+        self.cache_metrics["cache_misses"] += 1
         return None
     
+    async def _promote_to_upper_caches(self, query_hash: str, agent_id: str, result: Any, confidence: float, current_time: float):
+        """Promote cache entry to L2 and L1 caches."""
+        # Promote to L1 cache
+        self.l1_cache[query_hash] = (result, current_time, 1, current_time)
+        
+        # Promote to L2 Redis cache
+        await self._ensure_redis_connection()
+        if self.redis_client:
+            try:
+                redis_key = f"kenny:cache:{agent_id}:{query_hash}"
+                cache_data = {
+                    "result": result,
+                    "confidence": confidence,
+                    "timestamp": current_time,
+                    "agent_id": agent_id
+                }
+                await self.redis_client.setex(
+                    redis_key,
+                    self.l2_ttl,
+                    json.dumps(cache_data, default=str)
+                )
+            except Exception as e:
+                print(f"Error promoting to Redis L2 cache: {e}")
+                self.cache_metrics["l2_connection_errors"] += 1
+    
     async def set(self, query: str, agent_id: str, result: Any, confidence: float = 1.0):
-        """Store result in cache with confidence score."""
+        """Store result in all cache layers (L1, L2, L3) with enhanced performance."""
         query_hash = self._hash_query(query, agent_id)
         current_time = time.time()
         
@@ -176,6 +282,26 @@ class SemanticCache:
         # Store with enhanced metadata: (result, creation_time, access_count, last_access)
         self.l1_cache[query_hash] = (result, current_time, 1, current_time)
         
+        # L2 Redis Cache
+        await self._ensure_redis_connection()
+        if self.redis_client:
+            try:
+                redis_key = f"kenny:cache:{agent_id}:{query_hash}"
+                cache_data = {
+                    "result": result,
+                    "confidence": confidence,
+                    "timestamp": current_time,
+                    "agent_id": agent_id
+                }
+                await self.redis_client.setex(
+                    redis_key,
+                    self.l2_ttl,
+                    json.dumps(cache_data, default=str)
+                )
+            except Exception as e:
+                print(f"Redis L2 cache storage error: {e}")
+                self.cache_metrics["l2_connection_errors"] += 1
+        
         # L3 SQLite cache
         try:
             result_json = json.dumps(result, default=str)
@@ -187,7 +313,7 @@ class SemanticCache:
             conn.commit()
             conn.close()
         except Exception as e:
-            print(f"Cache storage error: {e}")
+            print(f"SQLite L3 cache storage error: {e}")
     
     async def cache_relationship_data(self, entity_type: str, entity_id: str, 
                                     related_entity_type: str, related_entity_id: str,
@@ -279,7 +405,7 @@ class SemanticCache:
             return []
     
     def get_cache_stats(self) -> Dict[str, Any]:
-        """Get comprehensive cache performance statistics."""
+        """Get comprehensive cache performance statistics for all tiers."""
         current_time = time.time()
         
         # Calculate L1 cache statistics
@@ -295,27 +421,99 @@ class SemanticCache:
         # Calculate memory usage (rough estimate)
         l1_memory_usage_mb = l1_size * 0.01  # Rough estimate: 10KB per entry
         
+        # Calculate hit rates
+        total_queries = max(self.cache_metrics["total_queries"], 1)
+        l1_hit_rate = (self.cache_metrics["l1_hits"] / total_queries) * 100
+        l2_hit_rate = (self.cache_metrics["l2_hits"] / total_queries) * 100
+        l3_hit_rate = (self.cache_metrics["l3_hits"] / total_queries) * 100
+        cache_miss_rate = (self.cache_metrics["cache_misses"] / total_queries) * 100
+        
         return {
             "l1_cache": {
                 "size": l1_size,
                 "max_size": self.l1_max_size,
-                "utilization_percent": (l1_size / self.l1_max_size) * 100,
+                "utilization_percent": round((l1_size / self.l1_max_size) * 100, 2),
+                "hit_rate_percent": round(l1_hit_rate, 2),
                 "avg_access_count": round(l1_avg_access_count, 2),
                 "avg_age_seconds": round(l1_avg_age, 2),
                 "oldest_entry_seconds": round(l1_oldest_entry, 2),
                 "ttl_seconds": self.l1_ttl,
                 "estimated_memory_mb": round(l1_memory_usage_mb, 2)
             },
-            "performance": {
-                "eviction_policy": "LFU-LRU Hybrid",
+            "l2_cache": {
+                "enabled": REDIS_AVAILABLE and self.redis_client is not None,
+                "hit_rate_percent": round(l2_hit_rate, 2),
+                "ttl_seconds": self.l2_ttl,
+                "connection_errors": self.cache_metrics["l2_connection_errors"],
+                "redis_url": self.redis_url if REDIS_AVAILABLE else "unavailable"
+            },
+            "l3_cache": {
+                "hit_rate_percent": round(l3_hit_rate, 2),
+                "ttl_seconds": 3600,  # 1 hour
+                "database_path": self.db_path
+            },
+            "overall_performance": {
+                "total_queries": self.cache_metrics["total_queries"],
+                "cache_miss_rate_percent": round(cache_miss_rate, 2),
+                "total_hit_rate_percent": round(100 - cache_miss_rate, 2),
+                "eviction_policy": "Enhanced LFU-LRU Hybrid",
                 "access_weight": self.l1_access_weight,
-                "cache_dir": self.cache_dir
+                "multi_tier_caching": "L1 (memory) -> L2 (Redis) -> L3 (SQLite)"
             }
         }
     
     def get_cache_hit_rate(self, total_queries: int, cache_hits: int) -> float:
         """Calculate cache hit rate percentage."""
         return (cache_hits / max(total_queries, 1)) * 100
+    
+    async def close(self):
+        """Close Redis connections and cleanup resources."""
+        if self.redis_client:
+            try:
+                await self.redis_client.close()
+                print("Redis L2 cache connection closed")
+            except Exception as e:
+                print(f"Error closing Redis connection: {e}")
+        
+        if self.redis_connection_pool:
+            try:
+                await self.redis_connection_pool.disconnect()
+            except Exception as e:
+                print(f"Error closing Redis connection pool: {e}")
+    
+    async def warm_cache_for_patterns(self, common_queries: List[str], agent_id: str):
+        """Warm cache with common query patterns for better performance."""
+        for query in common_queries:
+            try:
+                # This would typically call the actual agent capability to warm the cache
+                print(f"Would warm cache for pattern: {query}")
+            except Exception as e:
+                print(f"Error warming cache for query '{query}': {e}")
+    
+    async def invalidate_cache_pattern(self, pattern: str, agent_id: str):
+        """Invalidate cache entries matching a pattern."""
+        # Invalidate L1 cache
+        to_remove = []
+        for key in self.l1_cache.keys():
+            if pattern in key:
+                to_remove.append(key)
+        
+        for key in to_remove:
+            del self.l1_cache[key]
+        
+        # Invalidate L2 Redis cache
+        await self._ensure_redis_connection()
+        if self.redis_client:
+            try:
+                redis_pattern = f"kenny:cache:{agent_id}:*{pattern}*"
+                keys = await self.redis_client.keys(redis_pattern)
+                if keys:
+                    await self.redis_client.delete(*keys)
+                    print(f"Invalidated {len(keys)} Redis cache entries for pattern: {pattern}")
+            except Exception as e:
+                print(f"Error invalidating Redis cache for pattern '{pattern}': {e}")
+        
+        print(f"Invalidated cache entries for pattern: {pattern}")
 
 
 class LLMQueryProcessor:
@@ -625,6 +823,11 @@ class AgentServiceBase(BaseAgent):
     
     async def stop(self):
         """Stop the agent and cleanup resources."""
+        # Cleanup semantic cache Redis connections
+        if hasattr(self, 'semantic_cache') and self.semantic_cache:
+            await self.semantic_cache.close()
+        
+        # Cleanup LLM processor
         await self.llm_processor.close()
         await super().stop()
     
