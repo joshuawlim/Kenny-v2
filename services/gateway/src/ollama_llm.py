@@ -70,8 +70,11 @@ class OllamaLLM:
                 result = response.json()
                 generated_text = result.get("response", "").strip()
                 
-                if generated_text:
-                    return generated_text
+                # Filter out thinking blocks from the response
+                filtered_text = self._filter_thinking_blocks(generated_text)
+                
+                if filtered_text:
+                    return filtered_text
                 else:
                     logger.warning("Empty response from Ollama")
                     return self._fallback_response(user_input)
@@ -167,6 +170,18 @@ If a user's request can be handled by one of your specialized agents, mention th
 Keep responses concise and natural. Don't be overly formal."""
 
         return system_prompt
+    
+    def _filter_thinking_blocks(self, text: str) -> str:
+        """Remove thinking blocks from LLM responses to show only user-facing content"""
+        import re
+        
+        # Remove content between <think> and </think> tags
+        filtered = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+        
+        # Clean up extra whitespace
+        filtered = re.sub(r'\n\s*\n', '\n\n', filtered).strip()
+        
+        return filtered
     
     def _fallback_response(self, user_input: str) -> str:
         """Fallback response when Ollama is not available"""

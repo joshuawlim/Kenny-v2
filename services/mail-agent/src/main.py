@@ -50,7 +50,11 @@ async def shutdown_event():
 @app.get("/health")
 async def health_check():
     """Health check endpoint for the agent."""
-    return mail_agent.get_health_status()
+    health_data = mail_agent.get_health_status()
+    # Ensure the response includes the timestamp field expected by the registry
+    if "last_updated" in health_data:
+        health_data["timestamp"] = health_data["last_updated"]
+    return health_data
 
 
 @app.get("/health/performance")

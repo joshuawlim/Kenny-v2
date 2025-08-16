@@ -7,6 +7,7 @@ This agent provides mail functionality including search, read, and reply proposa
 import os
 from typing import Dict, Any
 from kenny_agent.base_agent import BaseAgent
+from kenny_agent.registry import AgentRegistryClient
 from kenny_agent.health import HealthMonitor, HealthCheck, HealthStatus
 
 from .handlers.search import SearchCapabilityHandler
@@ -57,6 +58,11 @@ class MailAgent(BaseAgent):
         
         # Set up health monitoring
         self.setup_health_monitoring()
+        
+        # Initialize registry client
+        self.registry_client = AgentRegistryClient(
+            base_url=os.getenv("AGENT_REGISTRY_URL", "http://localhost:8001")
+        )
         
         print("Mail Agent initialization complete!")
     
@@ -130,11 +136,24 @@ class MailAgent(BaseAgent):
             )
     
     async def start(self):
-        """Start the Mail Agent."""
+        """Start the Mail Agent and register with the registry."""
         print(f"Starting {self.name}...")
         print(f"Agent ID: {self.agent_id}")
         print(f"Capabilities: {list(self.capabilities.keys())}")
         print(f"Tools: {list(self.tools.keys())}")
+        
+        # Try to register with agent registry
+        try:
+            manifest = self.generate_manifest()
+            registration_data = {
+                "manifest": manifest,
+                "health_endpoint": "http://localhost:8000/health"
+            }
+            await self.registry_client.register_agent(registration_data)
+            print(f"[mail-agent] Successfully registered with registry")
+        except Exception as registry_error:
+            print(f"[mail-agent] Warning: Could not register with registry: {registry_error}")
+            print(f"[mail-agent] Continuing without registry registration")
         
         # Update health status
         self.update_health_status("healthy", "Mail Agent started successfully")
