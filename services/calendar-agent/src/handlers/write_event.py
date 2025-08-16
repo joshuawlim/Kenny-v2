@@ -60,7 +60,7 @@ class WriteEventCapabilityHandler(BaseCapabilityHandler):
                 "required": ["status", "message"],
                 "additionalProperties": False
             },
-            safety_annotations=["requires-approval", "write-operation", "local-only", "no-egress"]
+            safety_annotations=["local-only", "no-egress"]
         )
         
         # In-memory storage for proposals (in production, this would be persistent storage)

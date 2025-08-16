@@ -87,6 +87,9 @@ async def health_check():
     try:
         # Get health status from agent
         health_status = contacts_agent.get_health_status()
+        # Ensure the response includes the timestamp field expected by the registry
+        if "last_updated" in health_status:
+            health_status["timestamp"] = health_status["last_updated"]
         return health_status
     except Exception as e:
         return JSONResponse(

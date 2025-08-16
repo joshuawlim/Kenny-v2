@@ -86,7 +86,11 @@ class ContactsAgent(BaseAgent):
             # Try to register with agent registry using manifest
             try:
                 manifest = self.generate_manifest()
-                await self.registry_client.register_agent(manifest)
+                registration_data = {
+                    "manifest": manifest,
+                    "health_endpoint": "http://localhost:8003/health"
+                }
+                await self.registry_client.register_agent(registration_data)
                 print(f"[contacts-agent] Successfully registered with registry")
             except Exception as registry_error:
                 print(f"[contacts-agent] Warning: Could not register with registry: {registry_error}")

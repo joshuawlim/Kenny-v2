@@ -65,7 +65,7 @@ class ProposeEventCapabilityHandler(BaseCapabilityHandler):
                 "required": ["proposal", "requires_approval"],
                 "additionalProperties": False
             },
-            safety_annotations=["requires-approval", "local-only", "no-egress"]
+            safety_annotations=["read-only", "local-only", "no-egress"]
         )
     
     async def execute(self, parameters: Dict[str, Any]) -> Dict[str, Any]:

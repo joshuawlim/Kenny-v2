@@ -83,10 +83,12 @@ class MemoryAgent(BaseAgent):
             # Register with agent registry
             registry_client = AgentRegistryClient()
             try:
-                await registry_client.register_agent(
-                    manifest=self.generate_manifest(),
-                    health_endpoint="/health"
-                )
+                manifest = self.generate_manifest()
+                registration_data = {
+                    "manifest": manifest,
+                    "health_endpoint": "http://localhost:8004/health"
+                }
+                await registry_client.register_agent(registration_data)
                 self.logger.info("Successfully registered with agent registry")
             except Exception as e:
                 self.logger.warning(f"Failed to register with agent registry: {e}")

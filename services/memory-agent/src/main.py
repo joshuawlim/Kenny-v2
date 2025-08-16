@@ -19,7 +19,7 @@ from typing import Dict, Any, List, Optional
 import logging
 import asyncio
 
-from kenny_agent.agent import MemoryAgent
+from .kenny_agent.agent import MemoryAgent
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
