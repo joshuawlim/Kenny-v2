@@ -1,10 +1,12 @@
 import asyncio
+import json
 import logging
 from typing import Dict, Any, List, Optional, AsyncGenerator
 import httpx
 from datetime import datetime
 
 from .schemas import AgentInfo, CapabilityInfo, SystemHealth
+from .ollama_llm import OllamaLLM
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +18,9 @@ class KennyGateway:
         self.coordinator_url = "http://localhost:8002"
         self.http_client: Optional[httpx.AsyncClient] = None
         
+        # Ollama LLM for conversational responses
+        self.ollama_llm = OllamaLLM()
+        
         # Cache for performance
         self._agents_cache: Dict[str, AgentInfo] = {}
         self._capabilities_cache: List[CapabilityInfo] = []
@@ -25,6 +30,9 @@ class KennyGateway:
     async def initialize(self):
         """Initialize gateway components"""
         self.http_client = httpx.AsyncClient(timeout=10.0)
+        
+        # Initialize Ollama LLM
+        await self.ollama_llm.initialize()
         
         # Try to connect to agent registry
         registry_available = await self._check_registry_connection()
@@ -50,6 +58,7 @@ class KennyGateway:
         """Cleanup gateway resources"""
         if self.http_client:
             await self.http_client.aclose()
+        await self.ollama_llm.cleanup()
         logger.info("Gateway cleanup completed")
     
     async def get_system_health(self) -> SystemHealth:
@@ -273,8 +282,8 @@ class KennyGateway:
             
             # Check if coordinator is available
             if not await self._is_coordinator_available():
-                logger.warning("Coordinator unavailable, using mock response")
-                return self._mock_coordinator_response(query, context)
+                logger.warning("Coordinator unavailable, using Ollama fallback")
+                return await self._mock_coordinator_response(query, context)
             
             request_data = {
                 "user_input": query,
@@ -295,7 +304,7 @@ class KennyGateway:
                 coordinator_result = result.get("result", {})
                 
                 # Extract the actual conversational message from coordinator results
-                actual_message = self._extract_conversational_message(coordinator_result)
+                actual_message = await self._extract_conversational_message(coordinator_result, query)
                 
                 return {
                     "request_id": f"coord_{int(start_time * 1000)}",
@@ -338,29 +347,31 @@ class KennyGateway:
         except:
             return False
     
-    def _mock_coordinator_response(self, query: str, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate mock coordinator response"""
+    async def _mock_coordinator_response(self, query: str, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate mock coordinator response using Ollama when coordinator is unavailable"""
+        # Use Ollama to generate a natural response even when coordinator is down
+        ollama_context = {
+            "user_input": query,
+            "available_agents": list(self._agents_cache.values()),
+            **context
+        }
+        
+        try:
+            ollama_message = await self.ollama_llm.generate_response(query, ollama_context)
+        except Exception as e:
+            logger.error(f"Ollama fallback failed: {e}")
+            ollama_message = "I'm having some trouble with my services right now, but I'm here to help! Could you try asking me something else?"
+        
         return {
             "request_id": f"mock_coord_{asyncio.get_event_loop().time()}",
             "result": {
-                "intent": "multi_agent_workflow",
-                "plan": ["analyze_query", "route_to_agents", "synthesize_response"],
-                "execution_path": ["router", "planner", "executor", "reviewer"],
-                "results": {
-                    "calendar-agent": {
-                        "calendar.propose_event": {
-                            "status": "success",
-                            "event_proposal": {
-                                "title": "Meeting with Sarah",
-                                "suggested_times": ["2025-01-16T14:00:00Z", "2025-01-16T15:00:00Z"],
-                                "duration": "1 hour"
-                            }
-                        }
-                    }
-                },
-                "errors": []
+                "message": ollama_message,
+                "intent": "conversational_query",
+                "plan": ["ollama_fallback"],
+                "execution_path": ["ollama"],
+                "status": "success"
             },
-            "execution_path": ["router", "planner", "executor", "reviewer"],
+            "execution_path": ["ollama"],
             "duration_ms": 150,
             "_mock": True
         }
@@ -373,12 +384,10 @@ class KennyGateway:
             
             # Check if coordinator is available
             if not await self._is_coordinator_available():
-                logger.warning("Coordinator unavailable for streaming")
-                yield {
-                    "type": "error",
-                    "message": "Coordinator service unavailable",
-                    "timestamp": asyncio.get_event_loop().time()
-                }
+                logger.warning("Coordinator unavailable for streaming, using direct Ollama")
+                # Fall back to direct Ollama streaming
+                async for chunk in self._stream_ollama_response(query, context):
+                    yield chunk
                 return
             
             request_data = {
@@ -394,30 +403,112 @@ class KennyGateway:
             ) as response:
                 
                 if response.status_code != 200:
-                    yield {
-                        "type": "error",
-                        "message": f"Coordinator stream failed: {response.status_code}",
-                        "timestamp": asyncio.get_event_loop().time()
-                    }
+                    logger.warning(f"Coordinator stream failed: {response.status_code}, falling back to Ollama")
+                    async for chunk in self._stream_ollama_response(query, context):
+                        yield chunk
                     return
+                
+                # Track if we get any meaningful coordinator responses
+                got_coordinator_response = False
                 
                 async for line in response.aiter_lines():
                     if line.startswith("data: "):
                         try:
-                            import json
                             data = json.loads(line[6:])  # Remove "data: " prefix
+                            
+                            # Check if this is a final result with generic processing
+                            if data.get("type") == "final_result":
+                                result = data.get("result", {})
+                                results = result.get("results", {})
+                                
+                                # If it's just generic processing, enhance with Ollama
+                                if not self._has_meaningful_agent_results(results):
+                                    logger.info("Got generic coordinator result, enhancing with Ollama")
+                                    async for chunk in self._stream_ollama_response(query, context):
+                                        yield chunk
+                                    return
+                            
                             yield data
+                            got_coordinator_response = True
+                            
                         except json.JSONDecodeError as e:
                             logger.debug(f"Failed to parse streaming data: {line}, error: {e}")
                             continue
+                
+                # If we didn't get any coordinator response, fall back to Ollama
+                if not got_coordinator_response:
+                    logger.info("No coordinator response received, using Ollama")
+                    async for chunk in self._stream_ollama_response(query, context):
+                        yield chunk
                         
         except Exception as e:
             logger.error(f"Coordinator streaming failed: {e}")
+            # Fall back to Ollama streaming instead of error
+            async for chunk in self._stream_ollama_response(query, context):
+                yield chunk
+    
+    async def _stream_ollama_response(self, query: str, context: Dict[str, Any]) -> AsyncGenerator[Dict[str, Any], None]:
+        """Stream response directly from Ollama LLM"""
+        try:
+            # Prepare context for Ollama
+            ollama_context = {
+                "user_input": query,
+                "available_agents": list(self._agents_cache.values()),
+                **context
+            }
+            
+            # Start streaming
             yield {
-                "type": "error",
-                "message": str(e),
+                "type": "ollama_start",
+                "message": "Thinking...",
                 "timestamp": asyncio.get_event_loop().time()
             }
+            
+            response_content = ""
+            async for token in self.ollama_llm.generate_response_stream(query, ollama_context):
+                response_content += token
+                yield {
+                    "type": "token",
+                    "content": token,
+                    "timestamp": asyncio.get_event_loop().time()
+                }
+            
+            # Send final result
+            yield {
+                "type": "final_result",
+                "result": {
+                    "message": response_content,
+                    "intent": "conversational",
+                    "plan": ["ollama_response"],
+                    "execution_path": ["ollama"],
+                    "status": "success"
+                },
+                "message": "Response completed",
+                "timestamp": asyncio.get_event_loop().time()
+            }
+            
+        except Exception as e:
+            logger.error(f"Ollama streaming failed: {e}")
+            yield {
+                "type": "error",
+                "message": f"Failed to generate response: {str(e)}",
+                "timestamp": asyncio.get_event_loop().time()
+            }
+    
+    def _has_meaningful_agent_results(self, results: Dict[str, Any]) -> bool:
+        """Check if results contain meaningful agent outputs vs generic processing"""
+        execution_results = results.get("execution_results", [])
+        
+        for result in execution_results:
+            if isinstance(result, dict):
+                agent_id = result.get("agent_id")
+                status = result.get("status")
+                
+                # Check for successful results from actual agents (not generic processing)
+                if status == "success" and agent_id and agent_id not in [None, "coordinator"]:
+                    return True
+        
+        return False
     
     async def _refresh_cache_if_needed(self):
         """Refresh cache if TTL expired"""
@@ -495,78 +586,116 @@ class KennyGateway:
             logger.error(f"Failed to refresh cache: {e}")
             # Keep existing cache if refresh fails
     
-    def _extract_conversational_message(self, coordinator_result: Dict[str, Any]) -> str:
-        """Extract the actual conversational message from coordinator results"""
+    async def _extract_conversational_message(self, coordinator_result: Dict[str, Any], user_input: str) -> str:
+        """Extract conversational message using Ollama LLM for natural responses"""
         try:
-            # Try to get the message from execution results
             results = coordinator_result.get("results", {})
             execution_results = results.get("execution_results", [])
             
-            raw_message = ""
-            if execution_results and len(execution_results) > 0:
-                first_result = execution_results[0]
-                if isinstance(first_result, dict):
-                    result_data = first_result.get("result", {})
-                    if isinstance(result_data, dict) and "message" in result_data:
-                        raw_message = result_data["message"]
+            # Check for GENERAL_QUERY pattern from coordinator
+            for result in execution_results:
+                if isinstance(result, dict):
+                    result_data = result.get("result", {})
+                    if isinstance(result_data, dict):
+                        message = result_data.get("message", "")
+                        requires_enhancement = result_data.get("requires_llm_enhancement", False)
+                        
+                        # If this is a query that needs LLM enhancement
+                        if requires_enhancement or message.startswith("GENERAL_QUERY:") or message.startswith("CONVERSATIONAL_QUERY:"):
+                            logger.info("Detected query requiring LLM enhancement, using Ollama for natural response")
+                            context = {
+                                "user_input": user_input,
+                                "available_agents": list(self._agents_cache.values()),
+                                "coordinator_result": coordinator_result
+                            }
+                            return await self.ollama_llm.generate_response(user_input, context)
             
-            # Fallback: try to get from general_processing
-            if not raw_message:
-                general_processing = results.get("general_processing", {})
-                if isinstance(general_processing, dict):
-                    result_data = general_processing.get("result", {})
-                    if isinstance(result_data, dict) and "message" in result_data:
-                        raw_message = result_data["message"]
+            # Check if we have actual agent results vs generic processing
+            has_agent_results = self._has_meaningful_agent_results(results)
             
-            # If we found a raw message, enhance it with Kenny's personality
-            if raw_message:
-                return self._add_kenny_personality(raw_message)
+            # If we have actual agent results, format them naturally
+            if has_agent_results:
+                return await self._format_agent_results(execution_results, user_input)
             
-            # Last fallback: return a Kenny-style response
-            return "Hey there! I got your message but I'm having a bit of trouble processing it right now. Could you try rephrasing that for me?"
+            # For other fallback scenarios, use Ollama
+            context = {
+                "user_input": user_input,
+                "available_agents": list(self._agents_cache.values()),
+                "coordinator_result": coordinator_result
+            }
+            
+            ollama_response = await self.ollama_llm.generate_response(user_input, context)
+            return ollama_response
             
         except Exception as e:
             logger.warning(f"Failed to extract conversational message: {e}")
-            return "Oops! Something went sideways on my end. Mind giving that another shot?"
+            return "I'm having some trouble processing that right now. Could you try asking me something else?"
+    
+    async def _format_agent_results(self, execution_results: List[Dict[str, Any]], user_input: str) -> str:
+        """Format agent execution results into natural language using Ollama"""
+        try:
+            # Extract meaningful results from agent executions
+            agent_outputs = []
+            for result in execution_results:
+                if result.get("status") == "success":
+                    agent_id = result.get("agent_id", "unknown")
+                    capability = result.get("capability", "unknown")
+                    result_data = result.get("result", {})
+                    
+                    # Add to outputs for Ollama to format
+                    agent_outputs.append({
+                        "agent": agent_id,
+                        "capability": capability,
+                        "data": result_data
+                    })
+            
+            if agent_outputs:
+                # Use Ollama to format the results naturally
+                context = {
+                    "user_input": user_input,
+                    "agent_results": agent_outputs,
+                    "task": "format_agent_results"
+                }
+                
+                formatted_prompt = f"""The user asked: "{user_input}"
+
+Here are the results from my agents:
+{json.dumps(agent_outputs, indent=2)}
+
+Please provide a natural, helpful response to the user based on these results."""
+                
+                return await self.ollama_llm.generate_response(formatted_prompt, context)
+            else:
+                # No successful agent results, fall back to general response
+                return await self.ollama_llm.generate_response(user_input, {
+                    "user_input": user_input,
+                    "available_agents": list(self._agents_cache.values())
+                })
+                
+        except Exception as e:
+            logger.error(f"Failed to format agent results: {e}")
+            return f"I was able to process your request but had trouble formatting the response. The operation completed successfully."
     
     def _add_kenny_personality(self, raw_message: str) -> str:
-        """Add Kenny's personality and character to raw responses"""
+        """Legacy personality enhancement - now mostly replaced by Ollama LLM"""
         try:
-            # Kenny's personality traits: helpful, casual, tech-savvy, efficient, friendly
+            # Since we're now using Ollama for most responses, this is mainly for 
+            # backwards compatibility with any remaining non-Ollama paths
             
-            # Handle different types of generic responses
+            # Just return the message as-is for most cases
+            if raw_message and not raw_message.startswith("Processed:"):
+                return raw_message
+            
+            # For any remaining "Processed:" messages that slip through, 
+            # provide a minimal fallback
             if "Processed:" in raw_message:
-                # Transform generic "Processed: X" responses
                 user_input = raw_message.replace("Processed: ", "").strip()
-                
-                if any(greeting in user_input.lower() for greeting in ["hello", "hi", "hey"]):
-                    return f"Hey there! 👋 Good to see you. I'm Kenny, your personal assistant. What can I help you with today?"
-                
-                elif "kenny" in user_input.lower():
-                    return f"That's me! I'm Kenny, your multi-agent personal assistant. I can help you with emails, contacts, calendar, messages, and more. What would you like to do?"
-                
-                elif any(question in user_input.lower() for question in ["help", "what can you do", "capabilities"]):
-                    return "I'm Kenny! I can help you with loads of things - searching emails, finding contacts, checking your calendar, reading messages, and even coordinating complex tasks across multiple services. Just tell me what you need!"
-                
-                else:
-                    return f"Got it! I processed your request: '{user_input}'. Is there anything specific you'd like me to help you with?"
+                return f"I received your message: '{user_input}'. How can I help you with that?"
             
-            # Handle other response types
-            elif "success" in raw_message.lower():
-                return f"✅ All done! {raw_message.replace('Success', 'Successfully handled that').replace('success', 'took care of that')}"
-            
-            elif "error" in raw_message.lower() or "failed" in raw_message.lower():
-                return f"Hmm, ran into a snag there. {raw_message} Want me to try a different approach?"
-            
-            elif raw_message.strip() == "" or raw_message.lower() == "ok":
-                return "All set! Anything else I can help you with?"
-            
-            # For other responses, just add a friendly Kenny touch
-            return f"{raw_message} Let me know if you need anything else!"
+            return raw_message
             
         except Exception as e:
             logger.warning(f"Failed to add Kenny personality: {e}")
-            # Fallback to original message if personality enhancement fails
             return raw_message
     
     def _initialize_mock_data(self):

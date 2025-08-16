@@ -212,13 +212,33 @@ class ExecutorNode:
                 result['step_id'] = step.get('step_id')
                 results.append(result)
             else:
-                # Handle general processing
-                results.append({
-                    "status": "success",
-                    "step_id": step.get('step_id'),
-                    "action": step.get('action'),
-                    "result": {"message": f"Processed: {parameters.get('query', 'N/A')}"}
-                })
+                # Handle conversational responses and general processing
+                action = step.get('action', '')
+                if action == "conversational_response" or parameters.get('requires_llm_enhancement'):
+                    # This is a conversational query that should be handled by Ollama
+                    results.append({
+                        "status": "success",
+                        "step_id": step.get('step_id'),
+                        "action": action,
+                        "result": {
+                            "message": f"CONVERSATIONAL_QUERY: {parameters.get('query', 'N/A')}",
+                            "requires_llm_enhancement": True,
+                            "query_type": "conversational",
+                            "intent": parameters.get('intent', 'unknown')
+                        }
+                    })
+                else:
+                    # Handle other general processing - indicate this needs Gateway enhancement
+                    results.append({
+                        "status": "success",
+                        "step_id": step.get('step_id'),
+                        "action": action,
+                        "result": {
+                            "message": f"GENERAL_QUERY: {parameters.get('query', 'N/A')}",
+                            "requires_llm_enhancement": True,
+                            "query_type": "general"
+                        }
+                    })
         
         return results
     

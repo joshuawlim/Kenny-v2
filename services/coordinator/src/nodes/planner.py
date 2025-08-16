@@ -27,6 +27,9 @@ class TaskPlanner:
                 "find": ["memory.retrieve"],
                 "store": ["memory.store"],
                 "search": ["memory.retrieve"]
+            },
+            "conversational_query": {
+                "respond": ["llm_response"]
             }
         }
     
@@ -60,6 +63,21 @@ class TaskPlanner:
     
     def _create_single_agent_plan(self, intent: str, required_agents: List[Dict], user_input: str) -> List[Dict[str, Any]]:
         """Create plan for single agent execution"""
+        # Handle conversational queries specially
+        if intent == "conversational_query":
+            return [{
+                "step_id": "step_1",
+                "action": "conversational_response",
+                "agent_id": None,
+                "capability": None,
+                "parameters": {
+                    "query": user_input,
+                    "intent": intent,
+                    "requires_llm_enhancement": True
+                },
+                "dependencies": []
+            }]
+        
         if not required_agents:
             return [{
                 "step_id": "step_1",

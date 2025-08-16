@@ -127,7 +127,44 @@ Respond in JSON format:
         """Fallback classification using keyword matching"""
         user_input_lower = user_input.lower()
         
-        if any(word in user_input_lower for word in ["mail", "email", "message", "inbox", "send"]):
+        # First check for conversational queries that should use Ollama
+        conversational_patterns = [
+            # Questions about Kenny's capabilities
+            ["what", "can", "you", "do"],
+            ["what", "are", "you"],
+            ["who", "are", "you"], 
+            ["what", "tools"],
+            ["what", "capabilities"],
+            ["help", "me"],
+            ["how", "can", "you", "help"],
+            
+            # General greetings and conversation
+            ["hello", "hi", "hey"],
+            ["good", "morning"],
+            ["good", "afternoon"], 
+            ["how", "are", "you"],
+            ["thanks", "thank", "you"],
+            
+            # General questions
+            ["tell", "me", "about"],
+            ["explain"],
+            ["what", "is"],
+            ["how", "do", "i"],
+        ]
+        
+        # Check if input matches conversational patterns
+        for pattern in conversational_patterns:
+            if all(word in user_input_lower for word in pattern):
+                return {
+                    "primary_intent": "conversational_query",
+                    "confidence": 0.8,
+                    "required_agents": [],
+                    "execution_strategy": "single_agent",
+                    "reasoning": f"Conversational query detected: matches pattern {pattern}"
+                }
+        
+        # Check for specific agent operations
+        if any(word in user_input_lower for word in ["mail", "email", "inbox", "send"]) and not any(word in user_input_lower for word in ["what", "how", "can", "tell", "explain"]):
             return {
                 "primary_intent": "mail_operation",
                 "confidence": 0.7,
@@ -141,7 +178,7 @@ Respond in JSON format:
                 "execution_strategy": "single_agent",
                 "reasoning": "Keyword-based fallback classification for mail operations"
             }
-        elif any(word in user_input_lower for word in ["contact", "person", "phone", "address"]):
+        elif any(word in user_input_lower for word in ["contact", "person", "phone", "address"]) and not any(word in user_input_lower for word in ["what", "how", "can", "tell", "explain"]):
             return {
                 "primary_intent": "contacts_operation", 
                 "confidence": 0.7,
@@ -155,7 +192,7 @@ Respond in JSON format:
                 "execution_strategy": "single_agent",
                 "reasoning": "Keyword-based fallback classification for contact operations"
             }
-        elif any(word in user_input_lower for word in ["remember", "recall", "memory", "store", "find"]):
+        elif any(word in user_input_lower for word in ["remember", "recall", "memory", "store"]) and not any(word in user_input_lower for word in ["what", "how", "can", "tell", "explain"]):
             return {
                 "primary_intent": "memory_operation",
                 "confidence": 0.7,
@@ -169,7 +206,7 @@ Respond in JSON format:
                 "execution_strategy": "single_agent",
                 "reasoning": "Keyword-based fallback classification for memory operations"
             }
-        elif any(word in user_input_lower for word in ["calendar", "schedule", "meeting", "event", "appointment"]):
+        elif any(word in user_input_lower for word in ["calendar", "schedule", "meeting", "event", "appointment"]) and not any(word in user_input_lower for word in ["what", "how", "can", "tell", "explain"]):
             return {
                 "primary_intent": "calendar_operation",
                 "confidence": 0.7,
@@ -178,12 +215,13 @@ Respond in JSON format:
                 "reasoning": "Keyword-based fallback classification for calendar operations (no agent available)"
             }
         else:
+            # Default to conversational for everything else
             return {
-                "primary_intent": "general_query",
-                "confidence": 0.5,
+                "primary_intent": "conversational_query",
+                "confidence": 0.6,
                 "required_agents": [],
                 "execution_strategy": "single_agent",
-                "reasoning": "Fallback classification for general queries"
+                "reasoning": "Default fallback to conversational query"
             }
 
 class RouterNode:
