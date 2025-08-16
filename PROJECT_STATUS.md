@@ -1,7 +1,7 @@
 # Kenny V2.1 - Development Initialization
 
 **Current Version**: V2.0 (Production Ready)  
-**Next Version**: V2.1 (User Experience Focus)  
+**Next Version**: V2.1 (Architecture & Performance Focus)  
 **V2.0 Release**: See [`docs/releases/RELEASE_V2.0.md`](docs/releases/RELEASE_V2.0.md)  
 **Last Updated**: August 16, 2025
 
@@ -9,16 +9,21 @@
 
 ## V2.1 Vision
 
-Building on V2.0's production-ready foundation, V2.1 focuses on user experience enhancements and advanced monitoring capabilities to make Kenny more accessible and powerful for everyday users.
+Building on V2.0's production-ready foundation, V2.1 addresses critical architectural bottlenecks to achieve **intelligent agent-led services**, **optimized LLM performance**, and **sub-5 second response times** while maintaining local-first principles.
 
 ---
 
 ## V2.0 Baseline Summary
 
 **Architecture**: 7 operational agents with LangGraph coordinator  
-**Performance**: <30ms coordinator, 1.2ms direct routing  
+**Performance**: <30ms coordinator, 1.2ms direct routing (but 44s initial Mail response)  
 **Interface**: React dashboard (port 3001), API Gateway (port 9000)  
 **Launch**: One-click via `./kenny-launch.sh`  
+
+**Current Bottlenecks Identified**:
+- **Non-intelligent services**: Mail/Messages/Calendar/Contacts as basic API wrappers
+- **Coordinator model issues**: Qwen3:8b safety triggers affecting tool engagement
+- **Performance degradation**: 44s initial responses, minimal semantic caching
 
 For complete V2.0 details, see [`docs/releases/RELEASE_V2.0.md`](docs/releases/RELEASE_V2.0.md)
 
@@ -26,43 +31,64 @@ For complete V2.0 details, see [`docs/releases/RELEASE_V2.0.md`](docs/releases/R
 
 ## V2.1 Development Priorities
 
-### Phase 7.2: User Experience Enhancements
+### Phase 1: Agent-Led Service Transformation
 **Status**: Not Started  
-**Priority**: HIGH
+**Priority**: CRITICAL  
+**Timeline**: Week 1-4  
+**Target**: Transform passive services into intelligent agents
 
-- **Kenny Persona Integration**
-  - Friendly personality in chat interface
-  - Conversation history persistence
-  - Natural language improvements
-  
-- **Setup Wizard**
-  - Guided onboarding in React dashboard
-  - Permission checker and helper
-  - First-run configuration
-  
-- **User Documentation**
-  - Non-technical user guide
-  - Video tutorials
-  - Troubleshooting guide
+**Architecture Changes**:
+- **Embed llama3.2:3b or qwen2.5:3b** in each service for query interpretation
+- **Implement LLM-driven interface layer**: Natural language → structured tool calls
+- **Add semantic caching layer** for repeated queries and performance
+- **Create AgentServiceBase class** extending current service architecture
 
-### Phase 7.3: Advanced Dashboard Features  
+**Service Transformation**:
+```
+Current: Coordinator → Direct API → Service Tools
+Proposed: Coordinator → Service LLM → Intelligent Tool Selection → Cached Results
+```
+
+**Implementation Steps**:
+- Phase 1A (Week 1-2): Mail Agent transformation as proof of concept
+- Phase 1B (Week 3-4): Extend to Messages, Calendar, Contacts agents
+- Add confidence scoring and fallback mechanisms
+- Performance testing and optimization
+
+### Phase 2: Coordinator Model Optimization  
 **Status**: Not Started  
-**Priority**: MEDIUM
+**Priority**: HIGH  
+**Timeline**: Week 5-6  
+**Target**: Replace/supplement Qwen3:8b for faster, reliable tool engagement
 
-- **Security Dashboard**
-  - Full incident management UI
-  - Threat intelligence visualization
-  - Compliance reporting
-  
-- **Performance Analytics**
-  - Detailed metrics visualization
-  - Capacity planning tools
-  - Historical trend analysis
-  
-- **Workflow Visualization**
-  - Real-time agent coordination display
-  - Request flow tracking
-  - Debug mode interface
+**Analysis Framework**:
+- **Benchmark Qwen3:8b vs llama3.2:3b-instruct vs qwen2.5:3b-instruct**
+- **Test tool calling accuracy, latency, and safety alignment**
+- **Measure end-to-end workflow completion rates**
+
+**Recommended Strategy**:
+- **Primary**: Switch to **llama3.2:3b-instruct** for speed and reliability
+- **Fallback**: Keep Qwen3:8b for complex reasoning requiring multi-step thinking
+- **Implement model selection logic** based on query complexity scoring
+- **A/B testing framework** for model comparison
+
+### Phase 3: Performance Architecture Optimization
+**Status**: Not Started  
+**Priority**: HIGH  
+**Timeline**: Week 7-8  
+**Target**: Sub-5 second end-to-end response times
+
+**Multi-Tier Caching Strategy**:
+- **L1 Cache**: In-memory service-level caching for recent queries
+- **L2 Cache**: ChromaDB semantic cache for similar query matching  
+- **L3 Cache**: SQLite persistent cache for structured data
+
+**Performance Enhancements**:
+- **Async streaming responses** with progressive result delivery
+- **Parallel agent execution** where workflows allow
+- **Smart result aggregation** to minimize redundant processing
+- **Connection pooling** for bridge communications
+- **Comprehensive performance monitoring** and bottleneck identification
 
 ---
 
@@ -122,11 +148,23 @@ cd services/{agent-name} && python3 -m pytest tests/
 
 ## Success Metrics for V2.1
 
-- User onboarding time: <5 minutes
-- Dashboard usability score: >80%
-- Security incident response: <30 seconds
-- Performance monitoring coverage: 100%
-- Documentation completeness: All features covered
+### Performance Targets
+- **End-to-end response time**: <5 seconds (down from 44s)
+- **Service intelligence**: 95%+ natural language query success rate
+- **Cache hit ratio**: >80% for repeated queries
+- **Tool calling accuracy**: >90% across all LLM models
+
+### Architecture Targets  
+- **Agent transformation**: 100% of services with embedded LLMs
+- **Model optimization**: Coordinator latency <100ms for simple queries
+- **Caching coverage**: Multi-tier implementation across all services
+- **Performance monitoring**: Real-time bottleneck identification
+
+### Deliverables
+- **AgentServiceBase**: Reusable framework for intelligent services
+- **Model benchmarking**: Comprehensive performance comparison framework
+- **Caching architecture**: Production-ready multi-tier system
+- **Performance dashboard**: Real-time optimization monitoring
 
 ---
 
