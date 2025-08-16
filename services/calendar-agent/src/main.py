@@ -12,7 +12,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import httpx
 
-from agent import CalendarAgent
+from .agent import CalendarAgent
 
 
 # Initialize the Calendar Agent

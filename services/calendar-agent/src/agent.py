@@ -10,10 +10,10 @@ from typing import Dict, Any
 from kenny_agent.base_agent import BaseAgent
 from kenny_agent.health import HealthMonitor, HealthCheck, HealthStatus
 
-from handlers.read import ReadCapabilityHandler
-from handlers.propose_event import ProposeEventCapabilityHandler
-from handlers.write_event import WriteEventCapabilityHandler
-from tools.calendar_bridge import CalendarBridgeTool
+from .handlers.read import ReadCapabilityHandler
+from .handlers.propose_event import ProposeEventCapabilityHandler
+from .handlers.write_event import WriteEventCapabilityHandler
+from .tools.calendar_bridge import CalendarBridgeTool
 
 
 class CalendarAgent(BaseAgent):
