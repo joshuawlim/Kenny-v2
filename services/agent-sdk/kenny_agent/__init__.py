@@ -6,6 +6,7 @@ agents that can register with the agent registry and execute capabilities.
 """
 
 from .base_agent import BaseAgent
+from .agent_service_base import AgentServiceBase, SemanticCache, LLMQueryProcessor
 from .base_handler import BaseCapabilityHandler
 from .base_tool import BaseTool
 from .health import HealthStatus, HealthCheck, HealthMonitor, AgentHealthMonitor
@@ -18,6 +19,9 @@ from .security import SecurityMonitor, SecurityEvent, SecurityEventType, Securit
 __version__ = "0.1.0"
 __all__ = [
     "BaseAgent",
+    "AgentServiceBase",
+    "SemanticCache", 
+    "LLMQueryProcessor",
     "BaseCapabilityHandler", 
     "BaseTool",
     "HealthStatus",

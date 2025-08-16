@@ -11,11 +11,13 @@ from typing import Dict, Any
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from .agent import MailAgent
+from .intelligent_mail_agent import create_mail_agent
 
-
-# Initialize the Mail Agent
-mail_agent = MailAgent()
+# Initialize the Intelligent Mail Agent (with fallback to basic agent)
+mail_agent = create_mail_agent(
+    intelligent=os.getenv("KENNY_INTELLIGENT_AGENTS", "true").lower() == "true",
+    llm_model=os.getenv("KENNY_LLM_MODEL", "llama3.2:3b")
+)
 
 # Create FastAPI app
 app = FastAPI(
@@ -33,6 +35,12 @@ class CapabilityRequest(BaseModel):
 class CapabilityResponse(BaseModel):
     """Response model for capability execution."""
     output: Dict[str, Any]
+
+
+class QueryRequest(BaseModel):
+    """Request model for natural language queries."""
+    query: str
+    context: Dict[str, Any] = {}
 
 
 @app.on_event("startup")
@@ -61,9 +69,44 @@ async def health_check():
 async def enhanced_health_check():
     """Enhanced health check endpoint with performance metrics."""
     try:
-        # Get the enhanced health monitor if available
-        if hasattr(mail_agent, 'health_monitor') and hasattr(mail_agent.health_monitor, 'get_performance_dashboard'):
-            return mail_agent.health_monitor.get_performance_dashboard()
+        # Check if this is an intelligent agent with performance metrics
+        if hasattr(mail_agent, 'get_performance_metrics'):
+            metrics = mail_agent.get_performance_metrics()
+            health_data = mail_agent.get_health_status()
+            
+            return {
+                "agent_name": mail_agent.agent_id,
+                "agent_type": "intelligent_service" if hasattr(mail_agent, 'llm_processor') else "basic_service",
+                "overall_health": health_data,
+                "performance_summary": {
+                    "current_metrics": {
+                        "response_time_ms": metrics.get('avg_response_time', 0) * 1000,
+                        "success_rate_percent": 100.0,  # TODO: Track success rate
+                        "cache_hit_rate_percent": metrics.get('cache_hit_rate', 0) * 100,
+                        "total_queries": metrics.get('total_queries', 0),
+                        "llm_interpretation_time_ms": metrics.get('llm_interpretation_time', 0) * 1000,
+                        "timestamp": health_data.get('last_updated', health_data.get('timestamp'))
+                    },
+                    "sla_compliance": {
+                        "response_time_sla": {
+                            "current_ms": metrics.get('avg_response_time', 0) * 1000,
+                            "threshold_ms": 5000,
+                            "compliant": metrics.get('avg_response_time', 0) < 5.0
+                        },
+                        "cache_hit_rate_sla": {
+                            "current_percent": metrics.get('cache_hit_rate', 0) * 100,
+                            "threshold_percent": 80.0,
+                            "compliant": metrics.get('cache_hit_rate', 0) >= 0.8
+                        },
+                        "overall_compliant": metrics.get('status') in ['optimal', 'acceptable']
+                    },
+                    "trend_analysis": {"trend": metrics.get('status', 'unknown'), "change_percent": 0.0}
+                },
+                "alerts": {"recent": [], "total_count": 0, "active_issues": 0},
+                "recommendations": [
+                    "Agent upgraded to intelligent service with LLM capabilities" if hasattr(mail_agent, 'llm_processor') else "Consider upgrading to intelligent agent"
+                ]
+            }
         else:
             # Fallback to basic health with mock performance data
             basic_health = mail_agent.get_health_status()
@@ -105,6 +148,53 @@ async def list_capabilities():
         "agent_id": mail_agent.agent_id,
         "capabilities": capabilities
     }
+
+
+@app.post("/query")
+async def process_natural_language_query(request: QueryRequest):
+    """
+    Process natural language queries using intelligent agent capabilities.
+    
+    Args:
+        request: Query request with natural language query and optional context
+        
+    Returns:
+        Structured response with interpretation and results
+    """
+    try:
+        # Check if this is an intelligent agent
+        if hasattr(mail_agent, 'handle_query'):
+            result = await mail_agent.handle_query(request.query, request.context)
+            return result
+        else:
+            # Fallback for basic agents - try to map to search capability
+            try:
+                search_result = await mail_agent.execute_capability("search", {"query": request.query})
+                return {
+                    "success": True,
+                    "result": {
+                        "interpretation": {
+                            "capability": "search",
+                            "parameters": {"query": request.query},
+                            "confidence": 0.5,
+                            "reasoning": "Basic agent fallback to search"
+                        },
+                        "capability_result": search_result
+                    },
+                    "confidence": 0.5,
+                    "cached": False,
+                    "agent_id": mail_agent.agent_id
+                }
+            except Exception as fallback_error:
+                raise HTTPException(
+                    status_code=501,
+                    detail=f"Natural language processing not available in basic agent mode: {str(fallback_error)}"
+                )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Query processing failed: {str(e)}"
+        )
 
 
 @app.post("/capabilities/{verb}")
