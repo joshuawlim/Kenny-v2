@@ -178,10 +178,23 @@ class TaskPlanner:
             
             # Extract limit if specified
             import re
-            limit_match = re.search(r'(\d+)\s*(?:recent|latest|last)', user_input.lower())
-            if limit_match:
-                base_params["limit"] = int(limit_match.group(1))
-            else:
+            # Try multiple patterns for extracting numeric limits
+            limit_patterns = [
+                r'(?:exactly|show|get|find)\s+(\d+)\s*(?:most\s+)?(?:recent|latest|last)',
+                r'(\d+)\s*(?:recent|latest|last)',
+                r'(?:top|first)\s+(\d+)',
+                r'(\d+)\s*(?:most\s+)?(?:recent|latest|last)'
+            ]
+            
+            limit_found = False
+            for pattern in limit_patterns:
+                limit_match = re.search(pattern, user_input.lower())
+                if limit_match:
+                    base_params["limit"] = int(limit_match.group(1))
+                    limit_found = True
+                    break
+            
+            if not limit_found:
                 base_params["limit"] = 10
                 
         elif capability.startswith("contacts."):

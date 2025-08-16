@@ -99,11 +99,22 @@ Respond in JSON format:
             
             response = await self.llm.ainvoke(messages)
             
-            # Parse the JSON response
+            # Parse the JSON response, filtering out thinking blocks
             import json
+            import re
             try:
-                intent_data = json.loads(response.content)
-                return intent_data
+                # Remove thinking blocks from the response
+                cleaned_response = re.sub(r'<think>.*?</think>', '', response.content, flags=re.DOTALL).strip()
+                
+                # Try to find JSON in the cleaned response
+                json_match = re.search(r'\{.*\}', cleaned_response, re.DOTALL)
+                if json_match:
+                    intent_data = json.loads(json_match.group())
+                    return intent_data
+                else:
+                    # Fall back to parsing the entire cleaned response
+                    intent_data = json.loads(cleaned_response)
+                    return intent_data
             except json.JSONDecodeError:
                 logger.warning(f"Failed to parse LLM response as JSON: {response.content}")
                 return self._fallback_classification(user_input)
@@ -152,16 +163,20 @@ Respond in JSON format:
             ["how", "do", "i"],
         ]
         
-        # Check if input matches conversational patterns
+        # Check if input matches pure conversational patterns only
         for pattern in conversational_patterns:
-            if all(word in user_input_lower for word in pattern):
-                return {
-                    "primary_intent": "conversational_query",
-                    "confidence": 0.8,
-                    "required_agents": [],
-                    "execution_strategy": "single_agent",
-                    "reasoning": f"Conversational query detected: matches pattern {pattern}"
-                }
+            # Create phrase from pattern words
+            phrase = " ".join(pattern)
+            if phrase in user_input_lower:
+                # Strong check: ensure it's not asking about data/operations
+                if not any(word in user_input_lower for word in ["email", "mail", "contact", "calendar", "meeting", "message", "search", "find", "get", "show", "recent", "latest", "check"]):
+                    return {
+                        "primary_intent": "conversational_query",
+                        "confidence": 0.8,
+                        "required_agents": [],
+                        "execution_strategy": "single_agent",
+                        "reasoning": f"Pure conversational query: matches pattern {pattern}"
+                    }
         
         # Check for specific agent operations
         if any(word in user_input_lower for word in ["mail", "email", "inbox", "send"]) and not any(word in user_input_lower for word in ["what", "how", "can", "tell", "explain"]):

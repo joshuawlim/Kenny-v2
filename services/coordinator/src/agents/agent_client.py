@@ -38,10 +38,21 @@ class AgentClient:
         try:
             response = await self.client.get(f"{self.registry_url}/capabilities")
             response.raise_for_status()
-            capabilities = response.json()
-            # Filter capabilities for the specific agent
-            agent_caps = [cap for cap in capabilities if cap.get("agent_id") == agent_id]
-            return agent_caps
+            capabilities_data = response.json()
+            
+            # Handle both dict and list formats
+            if isinstance(capabilities_data, dict):
+                # Convert dict format to list and filter for agent
+                agent_caps = []
+                for verb, cap_list in capabilities_data.items():
+                    for cap in cap_list:
+                        if cap.get("agent_id") == agent_id:
+                            agent_caps.append(cap)
+                return agent_caps
+            else:
+                # Legacy list format
+                agent_caps = [cap for cap in capabilities_data if cap.get("agent_id") == agent_id]
+                return agent_caps
         except Exception as e:
             logger.error(f"Failed to get capabilities for agent {agent_id}: {e}")
             return []

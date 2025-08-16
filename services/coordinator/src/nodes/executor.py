@@ -11,7 +11,7 @@ class AgentExecutor:
     def __init__(self, registry_url: str = "http://localhost:8001"):
         self.registry_url = registry_url
         self.agent_urls = {}
-        self.http_client = httpx.AsyncClient(timeout=30.0)
+        self.http_client = httpx.AsyncClient(timeout=90.0)
     
     async def load_agent_urls(self):
         """Load agent URLs from registry"""
@@ -58,6 +58,7 @@ class AgentExecutor:
         
         try:
             logger.info(f"Executing {capability} on {agent_id} at {endpoint}")
+            logger.info(f"Sending parameters: {parameters}")
             
             response = await self.http_client.post(
                 endpoint,
@@ -84,10 +85,14 @@ class AgentExecutor:
                 }
                 
         except Exception as e:
-            logger.error(f"Failed to execute {capability} on {agent_id}: {e}")
+            import traceback
+            error_details = f"{type(e).__name__}: {str(e)}"
+            traceback_info = traceback.format_exc()
+            logger.error(f"Failed to execute {capability} on {agent_id}: {error_details}")
+            logger.error(f"Full traceback: {traceback_info}")
             return {
                 "status": "error",
-                "error": str(e),
+                "error": error_details if str(e) else f"{type(e).__name__} with no message",
                 "agent_id": agent_id,
                 "capability": capability
             }
