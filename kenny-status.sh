@@ -16,6 +16,10 @@ NC='\033[0m' # No Color
 KENNY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PID_DIR="$KENNY_ROOT/pids"
 
+# Phase 3.5 Configuration
+PHASE35_DATABASE_PATH="$KENNY_ROOT/services/calendar-agent/calendar.db"
+PHASE35_ENABLED=${KENNY_PHASE35_ENABLED:-false}
+
 # Service configurations (service:port:endpoint:display_name:priority)
 SERVICES=(
     "agent-registry:8001:/health:Agent Registry:1"
@@ -336,6 +340,202 @@ display_quick_access() {
     echo
 }
 
+# Display Phase 3.5 status
+display_phase35_status() {
+    if [ "$1" = "true" ] || [ "$PHASE35_ENABLED" = "true" ]; then
+        printf "${BLUE}=== Phase 3.5 Calendar Database + Real-time Sync Status ===${NC}\n"
+        
+        # Check if database exists
+        if [ -f "$PHASE35_DATABASE_PATH" ]; then
+            local db_size=$(du -h "$PHASE35_DATABASE_PATH" 2>/dev/null | cut -f1)
+            log "Database File: $PHASE35_DATABASE_PATH ($db_size)"
+        else
+            warn "Database File: Not found at $PHASE35_DATABASE_PATH"
+        fi
+        
+        # Check EventKit permissions
+        local eventkit_status=$(python3 -c "
+try:
+    from EventKit import EKEventStore, EKAuthorizationStatus, EKEntityType
+    store = EKEventStore.alloc().init()
+    status = EKEventStore.authorizationStatusForEntityType_(EKEntityType.EKEntityTypeEvent)
+    if status == EKAuthorizationStatus.EKAuthorizationStatusAuthorized:
+        print('GRANTED')
+    elif status == EKAuthorizationStatus.EKAuthorizationStatusDenied:
+        print('DENIED')
+    elif status == EKAuthorizationStatus.EKAuthorizationStatusRestricted:
+        print('RESTRICTED')
+    else:
+        print('NOT_DETERMINED')
+except ImportError:
+    print('NOT_AVAILABLE')
+except Exception as e:
+    print('ERROR')
+" 2>/dev/null)
+        
+        case "$eventkit_status" in
+            "GRANTED")
+                log "EventKit Permissions: Granted"
+                ;;
+            "DENIED")
+                error "EventKit Permissions: Denied"
+                ;;
+            "RESTRICTED")
+                warn "EventKit Permissions: Restricted"
+                ;;
+            "NOT_DETERMINED")
+                warn "EventKit Permissions: Not Determined"
+                ;;
+            "NOT_AVAILABLE")
+                warn "EventKit Framework: Not Available"
+                ;;
+            *)
+                error "EventKit Status: Unknown ($eventkit_status)"
+                ;;
+        esac
+        
+        # Test database performance
+        if [ -f "$PHASE35_DATABASE_PATH" ]; then
+            local perf_test=$(python3 -c "
+import sys
+import os
+import time
+sys.path.append('$KENNY_ROOT/services/calendar-agent/src')
+try:
+    from calendar_database import CalendarDatabase, DatabaseConfig
+    import asyncio
+    from datetime import datetime, timedelta
+    
+    async def test_performance():
+        config = DatabaseConfig(database_path='$PHASE35_DATABASE_PATH')
+        db = CalendarDatabase(config)
+        await db.initialize()
+        
+        # Test query performance
+        start_time = time.time()
+        events = await db.get_events_in_range(
+            datetime.now() - timedelta(days=7),
+            datetime.now() + timedelta(days=7)
+        )
+        query_time = (time.time() - start_time) * 1000
+        
+        # Test connection health
+        health = await db.health_check()
+        
+        print(f'QUERY_TIME_MS:{query_time:.2f}')
+        print(f'EVENTS_COUNT:{len(events)}')
+        print(f'DATABASE_HEALTHY:{health}')
+        
+        await db.close()
+    
+    asyncio.run(test_performance())
+except Exception as e:
+    print(f'ERROR:{e}')
+" 2>/dev/null)
+            
+            local query_time=$(echo "$perf_test" | grep "QUERY_TIME_MS:" | cut -d: -f2)
+            local events_count=$(echo "$perf_test" | grep "EVENTS_COUNT:" | cut -d: -f2)
+            local db_healthy=$(echo "$perf_test" | grep "DATABASE_HEALTHY:" | cut -d: -f2)
+            
+            if [ -n "$query_time" ]; then
+                if (( $(echo "$query_time < 10" | bc -l 2>/dev/null || echo "0") )); then
+                    log "Query Performance: ${query_time}ms (Target: <10ms) ✓"
+                else
+                    warn "Query Performance: ${query_time}ms (Target: <10ms) ✗"
+                fi
+                info "Events in Cache: $events_count"
+            fi
+            
+            if [ "$db_healthy" = "True" ]; then
+                log "Database Health: Healthy"
+            else
+                error "Database Health: Unhealthy"
+            fi
+        fi
+        
+        # Check sync pipeline status
+        local sync_status=$(python3 -c "
+import sys
+import os
+sys.path.append('$KENNY_ROOT/services/calendar-agent/src')
+try:
+    from week2_integration_coordinator import Week2IntegrationCoordinator
+    from calendar_database import CalendarDatabase, DatabaseConfig
+    import asyncio
+    
+    async def check_sync():
+        config = DatabaseConfig(database_path='$PHASE35_DATABASE_PATH')
+        db = CalendarDatabase(config)
+        await db.initialize()
+        
+        coordinator = Week2IntegrationCoordinator(database=db)
+        health = await coordinator.get_health_status()
+        
+        print(f'SYNC_ENGINE_STATUS:{health.get(\"sync_engine_status\", \"unknown\")}')
+        print(f'PIPELINE_STATUS:{health.get(\"pipeline_status\", \"unknown\")}')
+        print(f'WRITER_STATUS:{health.get(\"writer_status\", \"unknown\")}')
+        print(f'PERFORMANCE_MODE:{health.get(\"performance_mode\", \"unknown\")}')
+        
+        await db.close()
+    
+    asyncio.run(check_sync())
+except Exception as e:
+    print(f'ERROR:{e}')
+" 2>/dev/null)
+        
+        local sync_engine=$(echo "$sync_status" | grep "SYNC_ENGINE_STATUS:" | cut -d: -f2)
+        local pipeline=$(echo "$sync_status" | grep "PIPELINE_STATUS:" | cut -d: -f2)
+        local writer=$(echo "$sync_status" | grep "WRITER_STATUS:" | cut -d: -f2)
+        local perf_mode=$(echo "$sync_status" | grep "PERFORMANCE_MODE:" | cut -d: -f2)
+        
+        if [ -n "$sync_engine" ]; then
+            case "$sync_engine" in
+                "running"|"healthy") log "Sync Engine: $sync_engine" ;;
+                "stopped"|"error") error "Sync Engine: $sync_engine" ;;
+                *) warn "Sync Engine: $sync_engine" ;;
+            esac
+        fi
+        
+        if [ -n "$pipeline" ]; then
+            case "$pipeline" in
+                "running"|"healthy") log "Sync Pipeline: $pipeline" ;;
+                "stopped"|"error") error "Sync Pipeline: $pipeline" ;;
+                *) warn "Sync Pipeline: $pipeline" ;;
+            esac
+        fi
+        
+        if [ -n "$writer" ]; then
+            case "$writer" in
+                "running"|"healthy") log "Bidirectional Writer: $writer" ;;
+                "stopped"|"error") error "Bidirectional Writer: $writer" ;;
+                *) warn "Bidirectional Writer: $writer" ;;
+            esac
+        fi
+        
+        if [ -n "$perf_mode" ]; then
+            case "$perf_mode" in
+                "phase35"|"high_performance") 
+                    printf "${GREEN}Performance Mode: $perf_mode${NC}\n" 
+                    ;;
+                "phase32"|"compatibility") 
+                    printf "${YELLOW}Performance Mode: $perf_mode${NC}\n" 
+                    ;;
+                *) 
+                    printf "${RED}Performance Mode: $perf_mode${NC}\n" 
+                    ;;
+            esac
+        fi
+        
+        echo
+    else
+        printf "${YELLOW}=== Phase 3.5 Status: Disabled ===${NC}\n"
+        echo "• Phase 3.5 features are not enabled"
+        echo "• Running in Phase 3.2 compatibility mode"
+        echo "• To enable: export KENNY_PHASE35_ENABLED=true"
+        echo
+    fi
+}
+
 # Display system resources
 display_system_resources() {
     printf "${BLUE}=== System Resources ===${NC}\n"
@@ -386,6 +586,7 @@ EOF
         
         display_status_table true
         display_system_resources
+        display_phase35_status true
         display_quick_access
         
         printf "${CYAN}Refreshing in 5 seconds... (Ctrl+C to exit)${NC}\n"
@@ -446,20 +647,50 @@ main() {
             json_output
             exit 0
             ;;
+        --phase35)
+            # Phase 3.5 specific status check
+            clear_screen --no-clear
+            
+            printf "${BLUE}"
+            cat << "EOF"
+ _  __                         ____  _        _             
+| |/ /__ _ __  _ __  _   _     / ___|| |_ __ _| |_ _   _ ___ 
+| ' // _ \ '_ \| '_ \| | | |   \___ \| __/ _` | __| | | / __|
+| . \  __/ | | | | | | |_| |    ___) | || (_| | |_| |_| \__ \
+|_|\_\___|_| |_|_| |_|\__, |   |____/ \__\__,_|\__|\__,_|___/
+                     |___/                                 
+EOF
+            printf "${NC}\n"
+            
+            info "Kenny v2.0 Phase 3.5 Status Check"
+            echo
+            
+            display_phase35_status true
+            display_system_resources
+            
+            printf "${BLUE}Phase 3.5 Commands:${NC}\n"
+            echo "• Full Phase 3.5 Test: ./kenny-test-phase35.sh"
+            echo "• General Status:      ./kenny-status.sh"
+            echo "• Watch Mode:          ./kenny-status.sh --watch"
+            echo
+            exit 0
+            ;;
         --help|-h)
             echo "Kenny v2.0 Service Status Monitor"
             echo
             echo "Usage: $0 [OPTIONS]"
             echo
             echo "Options:"
-            echo "  (no args)    Show current status"
-            echo "  --watch, -w  Continuous monitoring mode"
-            echo "  --json       JSON output for scripts"
-            echo "  --help, -h   Show this help message"
+            echo "  (no args)     Show current status"
+            echo "  --watch, -w   Continuous monitoring mode"
+            echo "  --phase35     Phase 3.5 specific status"
+            echo "  --json        JSON output for scripts"
+            echo "  --help, -h    Show this help message"
             echo
             echo "Examples:"
             echo "  $0                 # One-time status check"
             echo "  $0 --watch         # Continuous monitoring"
+            echo "  $0 --phase35       # Phase 3.5 status only"
             echo "  $0 --json | jq .   # JSON output with formatting"
             echo
             exit 0
@@ -485,6 +716,7 @@ EOF
     
     display_status_table true
     display_system_resources
+    display_phase35_status false
     display_quick_access
     
     printf "${BLUE}Commands:${NC}\n"
