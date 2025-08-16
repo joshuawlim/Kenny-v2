@@ -12,17 +12,17 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import httpx
 
-from .agent import CalendarAgent
+from intelligent_calendar_agent import IntelligentCalendarAgent
 
 
-# Initialize the Calendar Agent
-calendar_agent = CalendarAgent()
+# Initialize the Intelligent Calendar Agent
+calendar_agent = IntelligentCalendarAgent()
 
 # Create FastAPI app
 app = FastAPI(
-    title="Calendar Agent",
-    description="Apple Calendar integration with event reading, proposal generation, and approval-based writing",
-    version="1.0.0"
+    title="Intelligent Calendar Agent",
+    description="AI-powered calendar management with natural language processing, smart scheduling, and intelligent meeting coordination",
+    version="2.1.0"
 )
 
 

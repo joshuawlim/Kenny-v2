@@ -1,8 +1,9 @@
 {
-  "agent_id": "imessage-agent",
-  "version": "1.0.0",
-  "display_name": "iMessage Agent",
-  "description": "Read-only iMessage search, read, and reply proposal capabilities",
+  "agent_id": "intelligent-imessage-agent",
+  "version": "2.1.0",
+  "display_name": "Intelligent iMessage Agent",
+  "description": "AI-powered iMessage management with natural language processing, conversation intelligence, and context-aware messaging",
+  "agent_type": "intelligent_service",
   "capabilities": [
     {
       "verb": "messages.search",
@@ -97,8 +98,8 @@
       "description": "Generate contextual reply proposals for iMessage conversations"
     }
   ],
-  "data_scopes": ["imessage:messages", "imessage:threads"],
-  "tool_access": ["macos-bridge", "sqlite-db"],
+  "data_scopes": ["imessage:messages", "imessage:threads", "imessage:contacts"],
+  "tool_access": ["macos-bridge", "sqlite-db", "ollama", "llama3.2:3b"],
   "egress_domains": [],
   "health_check": {
     "endpoint": "/health",

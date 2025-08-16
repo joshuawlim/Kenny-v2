@@ -32,7 +32,7 @@ For complete V2.0 details, see [`docs/releases/RELEASE_V2.0.md`](docs/releases/R
 ## V2.1 Development Priorities
 
 ### Phase 1: Agent-Led Service Transformation
-**Status**: Phase 1A Complete ✅ | Phase 1B In Progress 🚧  
+**Status**: Phase 1A Complete ✅ | Phase 1B Complete ✅  
 **Priority**: CRITICAL  
 **Timeline**: Week 1-4  
 **Target**: Transform passive services into intelligent agents
@@ -58,9 +58,15 @@ V2.1:    Coordinator → Service LLM → Intelligent Tool Selection → Cached R
   - ✅ Performance monitoring with <5s targets established
   - ✅ Dashboard shows "intelligent_service" agent type
   - ✅ Baseline: 44s → Target: <5s response times
-- 🚧 **Phase 1B (Week 3-4)**: Extend to Messages, Calendar, Contacts agents
-- 🔲 Add confidence scoring and fallback mechanisms
-- 🔲 Performance testing and optimization
+- ✅ **Phase 1B (Week 3-4)**: Extend to Messages, Calendar, Contacts agents
+  - ✅ IntelligentContactsAgent with cross-platform enrichment and semantic matching
+  - ✅ IntelligentiMessageAgent with conversation intelligence and context analysis
+  - ✅ IntelligentCalendarAgent with smart scheduling and conflict resolution
+  - ✅ Enhanced Coordinator with best-guess interpretation for imperfect queries
+  - ✅ Confidence scoring and fallback mechanisms across all routing
+  - ✅ Updated service manifests to reflect "intelligent_service" type
+  - ✅ llama3.2:3b model integration validated across all services
+  - ✅ Updated kenny-launch.sh to use intelligent agents by default
 
 ### Phase 2: Coordinator Model Optimization  
 **Status**: Not Started  

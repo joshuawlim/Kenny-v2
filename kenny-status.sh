@@ -22,7 +22,7 @@ SERVICES=(
     "coordinator:8002:/health:Coordinator:1"
     "gateway:9000:/health:API Gateway:1"
     "dashboard:3001:/:React Dashboard:2"
-    "bridge:5100:/:Data Bridge:2"
+    "bridge:5100:/health:Data Bridge:2"
     "mail-agent:8000:/health:Mail Agent:2"
     "contacts-agent:8003:/health:Contacts Agent:2"
     "memory-agent:8004:/health:Memory Agent:2"

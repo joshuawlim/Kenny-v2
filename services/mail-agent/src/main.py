@@ -21,9 +21,9 @@ mail_agent = create_mail_agent(
 
 # Create FastAPI app
 app = FastAPI(
-    title="Mail Agent",
-    description="Read-only mail search/read and reply proposals",
-    version="1.0.0"
+    title="Intelligent Mail Agent",
+    description="AI-powered mail search, read, and reply proposals with natural language understanding",
+    version="2.1.0"
 )
 
 

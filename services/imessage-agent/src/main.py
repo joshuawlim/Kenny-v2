@@ -12,17 +12,17 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import httpx
 
-from .agent import iMessageAgent
+from .intelligent_imessage_agent import IntelligentiMessageAgent
 
 
-# Initialize the iMessage Agent
-imessage_agent = iMessageAgent()
+# Initialize the Intelligent iMessage Agent
+imessage_agent = IntelligentiMessageAgent()
 
 # Create FastAPI app
 app = FastAPI(
-    title="iMessage Agent",
-    description="Read-only iMessage search, read, and reply proposal capabilities",
-    version="1.0.0"
+    title="Intelligent iMessage Agent",
+    description="AI-powered iMessage management with natural language processing, conversation intelligence, and context-aware messaging",
+    version="2.1.0"
 )
 
 

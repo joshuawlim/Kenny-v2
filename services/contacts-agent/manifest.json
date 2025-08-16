@@ -1,8 +1,9 @@
 {
-  "agent_id": "contacts-agent",
-  "version": "1.0.0",
-  "display_name": "Contacts Agent",
-  "description": "Contact management and enrichment with deduplication",
+  "agent_id": "intelligent-contacts-agent",
+  "version": "2.1.0",
+  "display_name": "Intelligent Contacts Agent",
+  "description": "AI-powered contact management with natural language processing, cross-platform enrichment, and semantic matching",
+  "agent_type": "intelligent_service",
   "capabilities": [
     {
       "verb": "contacts.resolve",
@@ -111,7 +112,7 @@
     }
   ],
   "data_scopes": ["contacts:all", "mail:inbox", "mail:sent", "whatsapp:chats", "imessage:chats", "calendar:events"],
-  "tool_access": ["macos-bridge", "sqlite-db", "ollama"],
+  "tool_access": ["macos-bridge", "sqlite-db", "ollama", "llama3.2:3b"],
   "egress_domains": [],
   "health_check": {
     "endpoint": "/health",

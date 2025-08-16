@@ -1,8 +1,9 @@
 {
-  "agent_id": "mail-agent",
-  "version": "1.0.0",
-  "display_name": "Mail Agent",
-  "description": "Read-only mail search/read and reply proposals",
+  "agent_id": "intelligent-mail-agent",
+  "version": "2.1.0",
+  "display_name": "Intelligent Mail Agent",
+  "description": "AI-powered mail search, read, and reply proposals with natural language understanding",
+  "agent_type": "intelligent_service",
   "capabilities": [
     {
       "verb": "messages.search",
@@ -97,7 +98,7 @@
     }
   ],
   "data_scopes": ["mail:inbox", "mail:sent"],
-  "tool_access": ["macos-bridge", "sqlite-db", "ollama"],
+  "tool_access": ["macos-bridge", "sqlite-db", "ollama", "llama3.2:3b"],
   "egress_domains": [],
   "health_check": {
     "endpoint": "/health",

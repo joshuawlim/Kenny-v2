@@ -1,8 +1,9 @@
 {
-  "agent_id": "calendar-agent",
-  "version": "1.0.0",
-  "display_name": "Calendar Agent",
-  "description": "Apple Calendar integration with event reading, proposal generation, and approval-based writing",
+  "agent_id": "intelligent-calendar-agent",
+  "version": "2.1.0",
+  "display_name": "Intelligent Calendar Agent",
+  "description": "AI-powered calendar management with natural language processing, smart scheduling, and intelligent meeting coordination",
+  "agent_type": "intelligent_service",
   "capabilities": [
     {
       "verb": "calendar.read",
@@ -144,8 +145,8 @@
       "description": "Create approved calendar events in Apple Calendar"
     }
   ],
-  "data_scopes": ["calendar:events", "calendar:calendars"],
-  "tool_access": ["macos-bridge", "approval-workflow"],
+  "data_scopes": ["calendar:events", "calendar:calendars", "calendar:participants"],
+  "tool_access": ["macos-bridge", "approval-workflow", "ollama", "llama3.2:3b"],
   "egress_domains": [],
   "health_check": {
     "endpoint": "/health",

@@ -18,11 +18,11 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent.parent / "agent-sdk"))
 
-from .kenny_agent.agent import ContactsAgent
+from .kenny_agent.intelligent_contacts_agent import IntelligentContactsAgent
 
 
 # Global agent instance
-contacts_agent: ContactsAgent = None
+contacts_agent: IntelligentContactsAgent = None
 
 
 @asynccontextmanager
@@ -35,7 +35,7 @@ async def lifespan(app: FastAPI):
     
     try:
         # Initialize and start the agent
-        contacts_agent = ContactsAgent()
+        contacts_agent = IntelligentContactsAgent()
         success = await contacts_agent.start()
         
         if not success:
@@ -60,9 +60,9 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI app
 app = FastAPI(
-    title="Contacts Agent",
-    description="Contact management and enrichment agent for Kenny v2",
-    version="1.0.0",
+    title="Intelligent Contacts Agent",
+    description="AI-powered contact management with natural language processing, cross-platform enrichment, and semantic matching",
+    version="2.1.0",
     lifespan=lifespan
 )
 

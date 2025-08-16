@@ -278,29 +278,29 @@ start_service "bridge" \
 # Wait a moment for bridge to initialize
 sleep 2
 
-# Start all agents in parallel
+# Start all agents in parallel (using intelligent agents by default)
 start_service "mail-agent" \
-    "python3 -m uvicorn src.main:app --host 0.0.0.0 --port $MAIL_AGENT_PORT" \
+    "KENNY_INTELLIGENT_AGENTS=true KENNY_LLM_MODEL=llama3.2:3b python3 -m uvicorn src.main:app --host 0.0.0.0 --port $MAIL_AGENT_PORT" \
     "$KENNY_ROOT/services/mail-agent"
 
 start_service "contacts-agent" \
-    "python3 -m uvicorn src.main:app --host 0.0.0.0 --port $CONTACTS_AGENT_PORT" \
+    "KENNY_INTELLIGENT_AGENTS=true KENNY_LLM_MODEL=llama3.2:3b python3 -m uvicorn src.main:app --host 0.0.0.0 --port $CONTACTS_AGENT_PORT" \
     "$KENNY_ROOT/services/contacts-agent"
 
 start_service "memory-agent" \
-    "python3 -m uvicorn src.main:app --host 0.0.0.0 --port $MEMORY_AGENT_PORT" \
+    "KENNY_LLM_MODEL=llama3.2:3b python3 -m uvicorn src.main:app --host 0.0.0.0 --port $MEMORY_AGENT_PORT" \
     "$KENNY_ROOT/services/memory-agent"
 
 start_service "whatsapp-agent" \
-    "python3 -m uvicorn src.main:app --host 0.0.0.0 --port $WHATSAPP_AGENT_PORT" \
+    "KENNY_LLM_MODEL=llama3.2:3b python3 -m uvicorn src.main:app --host 0.0.0.0 --port $WHATSAPP_AGENT_PORT" \
     "$KENNY_ROOT/services/whatsapp-agent"
 
 start_service "imessage-agent" \
-    "python3 -m uvicorn src.main:app --host 0.0.0.0 --port $IMESSAGE_AGENT_PORT" \
+    "KENNY_INTELLIGENT_AGENTS=true KENNY_LLM_MODEL=llama3.2:3b python3 -m uvicorn src.main:app --host 0.0.0.0 --port $IMESSAGE_AGENT_PORT" \
     "$KENNY_ROOT/services/imessage-agent"
 
 start_service "calendar-agent" \
-    "PYTHONPATH=../../agent-sdk python3 main.py --port $CALENDAR_AGENT_PORT" \
+    "KENNY_INTELLIGENT_AGENTS=true KENNY_LLM_MODEL=llama3.2:3b PYTHONPATH=../../agent-sdk python3 main.py --port $CALENDAR_AGENT_PORT" \
     "$KENNY_ROOT/services/calendar-agent/src"
 
 info "Agents starting up... (this takes a moment)"

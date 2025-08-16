@@ -53,14 +53,16 @@ class AgentDependency:
 
 
 class SemanticCache:
-    """Multi-tier semantic caching for agent responses."""
+    """Multi-tier semantic caching for agent responses with enhanced L1 performance."""
     
     def __init__(self, cache_dir: str = "/tmp/kenny_cache"):
-        """Initialize semantic cache with L1 (memory), L2 (ChromaDB), L3 (SQLite)."""
+        """Initialize semantic cache with enhanced L1 (memory), L2 (ChromaDB), L3 (SQLite)."""
         self.cache_dir = cache_dir
-        self.l1_cache: Dict[str, Tuple[Any, float]] = {}  # query_hash -> (result, timestamp)
-        self.l1_ttl = 300  # 5 minutes
-        self.l1_max_size = 100
+        # Enhanced L1 cache: query_hash -> (result, timestamp, access_count, last_access)
+        self.l1_cache: Dict[str, Tuple[Any, float, int, float]] = {}
+        self.l1_ttl = 900  # Extended to 15 minutes for better hit rates
+        self.l1_max_size = 500  # Increased cache size for better performance
+        self.l1_access_weight = 0.3  # Weight for frequency in LFU-LRU hybrid
         
         # L3 SQLite cache for structured data
         self.db_path = f"{cache_dir}/agent_cache.db"
@@ -123,10 +125,12 @@ class SemanticCache:
         query_hash = self._hash_query(query, agent_id)
         current_time = time.time()
         
-        # L1 Cache check
+        # Enhanced L1 Cache check with access tracking
         if query_hash in self.l1_cache:
-            result, timestamp = self.l1_cache[query_hash]
+            result, timestamp, access_count, last_access = self.l1_cache[query_hash]
             if current_time - timestamp < self.l1_ttl:
+                # Update access statistics for LFU-LRU hybrid
+                self.l1_cache[query_hash] = (result, timestamp, access_count + 1, current_time)
                 return result, 1.0  # Perfect match confidence
         
         # L3 SQLite cache check
@@ -142,8 +146,8 @@ class SemanticCache:
             try:
                 result = json.loads(row[0])
                 confidence = row[1]
-                # Promote to L1 cache
-                self.l1_cache[query_hash] = (result, current_time)
+                # Promote to L1 cache with initial access count
+                self.l1_cache[query_hash] = (result, current_time, 1, current_time)
                 return result, confidence
             except json.JSONDecodeError:
                 pass
@@ -155,13 +159,22 @@ class SemanticCache:
         query_hash = self._hash_query(query, agent_id)
         current_time = time.time()
         
-        # L1 Cache
+        # Enhanced L1 Cache with LFU-LRU hybrid eviction
         if len(self.l1_cache) >= self.l1_max_size:
-            # Remove oldest entry
-            oldest_key = min(self.l1_cache.keys(), key=lambda k: self.l1_cache[k][1])
-            del self.l1_cache[oldest_key]
+            # Enhanced eviction: combine frequency and recency with configurable weight
+            # Score = (1 - access_weight) * recency + access_weight * frequency
+            def eviction_score(key):
+                _, timestamp, access_count, last_access = self.l1_cache[key]
+                recency_score = (current_time - last_access) / (current_time - timestamp + 1)
+                frequency_score = 1.0 / (access_count + 1)
+                return (1 - self.l1_access_weight) * recency_score + self.l1_access_weight * frequency_score
+            
+            # Remove entry with lowest score (least valuable)
+            worst_key = min(self.l1_cache.keys(), key=eviction_score)
+            del self.l1_cache[worst_key]
         
-        self.l1_cache[query_hash] = (result, current_time)
+        # Store with enhanced metadata: (result, creation_time, access_count, last_access)
+        self.l1_cache[query_hash] = (result, current_time, 1, current_time)
         
         # L3 SQLite cache
         try:
@@ -264,6 +277,45 @@ class SemanticCache:
         except Exception as e:
             print(f"Semantic match error: {e}")
             return []
+    
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """Get comprehensive cache performance statistics."""
+        current_time = time.time()
+        
+        # Calculate L1 cache statistics
+        l1_size = len(self.l1_cache)
+        l1_total_access_count = sum(entry[2] for entry in self.l1_cache.values())  # access_count
+        l1_avg_access_count = l1_total_access_count / max(l1_size, 1)
+        
+        # Calculate age distribution
+        ages = [(current_time - entry[1]) for entry in self.l1_cache.values()]  # current_time - timestamp
+        l1_avg_age = sum(ages) / max(len(ages), 1)
+        l1_oldest_entry = max(ages) if ages else 0
+        
+        # Calculate memory usage (rough estimate)
+        l1_memory_usage_mb = l1_size * 0.01  # Rough estimate: 10KB per entry
+        
+        return {
+            "l1_cache": {
+                "size": l1_size,
+                "max_size": self.l1_max_size,
+                "utilization_percent": (l1_size / self.l1_max_size) * 100,
+                "avg_access_count": round(l1_avg_access_count, 2),
+                "avg_age_seconds": round(l1_avg_age, 2),
+                "oldest_entry_seconds": round(l1_oldest_entry, 2),
+                "ttl_seconds": self.l1_ttl,
+                "estimated_memory_mb": round(l1_memory_usage_mb, 2)
+            },
+            "performance": {
+                "eviction_policy": "LFU-LRU Hybrid",
+                "access_weight": self.l1_access_weight,
+                "cache_dir": self.cache_dir
+            }
+        }
+    
+    def get_cache_hit_rate(self, total_queries: int, cache_hits: int) -> float:
+        """Calculate cache hit rate percentage."""
+        return (cache_hits / max(total_queries, 1)) * 100
 
 
 class LLMQueryProcessor:
@@ -546,17 +598,29 @@ class AgentServiceBase(BaseAgent):
             )
     
     def get_performance_metrics(self) -> Dict[str, Any]:
-        """Get current performance metrics."""
+        """Get current performance metrics with enhanced cache statistics."""
         cache_hit_rate = (
             self.query_metrics["cache_hits"] / max(self.query_metrics["total_queries"], 1)
         )
         
+        # Get detailed cache statistics
+        cache_stats = self.semantic_cache.get_cache_stats()
+        
+        # Calculate performance improvement from caching
+        cache_hit_rate_percent = cache_hit_rate * 100
+        estimated_performance_improvement = min(cache_hit_rate_percent * 0.8, 80)  # Max 80% improvement
+        
         return {
             **self.query_metrics,
             "cache_hit_rate": cache_hit_rate,
+            "cache_hit_rate_percent": round(cache_hit_rate_percent, 1),
+            "estimated_performance_improvement_percent": round(estimated_performance_improvement, 1),
+            "cache_statistics": cache_stats,
             "performance_target": "5.0s",
             "status": "optimal" if self.query_metrics["avg_response_time"] < 2.0 else 
-                     "acceptable" if self.query_metrics["avg_response_time"] < 5.0 else "degraded"
+                     "acceptable" if self.query_metrics["avg_response_time"] < 5.0 else "degraded",
+            "cache_enabled": True,
+            "cache_policy": "Enhanced L1 LFU-LRU Hybrid"
         }
     
     async def stop(self):
